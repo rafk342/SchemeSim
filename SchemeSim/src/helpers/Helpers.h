@@ -12,11 +12,11 @@ namespace Utils
         {
             for (unsigned x = 0; x < image.getSize().x; ++x)
             {
-                sf::Color color = image.getPixel(x, y);
+                sf::Color color = image.getPixel(sf::Vector2u( x, y ));
                 color.r = 255 - color.r;
                 color.g = 255 - color.g;
                 color.b = 255 - color.b;
-                image.setPixel(x, y, color);
+                image.setPixel({ x, y }, color);
             }
         }
     }
@@ -42,7 +42,7 @@ namespace Utils
         {
             for (unsigned int x = 0; x < size.x; ++x)
             {
-                sf::Color pixel = image.getPixel(x, y);
+                sf::Color pixel = image.getPixel({ x, y });
                 if (pixel.a != 0) 
                 { 
                     if (x < left) left = x;
@@ -55,7 +55,7 @@ namespace Utils
 
         if (left < right && top < bottom) 
         {
-            sf::IntRect rect(left, top, right - left + 1, bottom - top + 1);
+			sf::IntRect rect(sf::Vector2i( left, top ), sf::Vector2i(right - left + 1, bottom - top + 1 ));
 			return rect;
         } 
         else 

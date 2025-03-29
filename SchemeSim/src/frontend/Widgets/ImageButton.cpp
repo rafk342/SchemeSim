@@ -18,7 +18,7 @@ bool ImageButton::ButtonBehavior()
             dlDrawList::getWindow()->draw(m_sprite);
         });
   
-    if (!g_SFMLRenderer.get_sfWindow()->hasFocus())
+    if (!g_SFMLRenderer.GetSfWindow()->hasFocus())
         return false;
 
     bool is_hovered_on_this_frame = is_hovered();
@@ -29,7 +29,7 @@ bool ImageButton::ButtonBehavior()
         m_sprite.setColor(unhovered_color);
     }
 
-    if (sf::Mouse::isButtonPressed(sf::Mouse::Left) && !was_pressed)
+    if (sf::Mouse::isButtonPressed(sf::Mouse::Button::Left) && !was_pressed)
     {
         if (is_hovered_on_this_frame)
         {
@@ -42,7 +42,7 @@ bool ImageButton::ButtonBehavior()
         }
         was_pressed = true;
     }
-    else if (!sf::Mouse::isButtonPressed(sf::Mouse::Left) && was_pressed)
+    else if (!sf::Mouse::isButtonPressed(sf::Mouse::Button::Left) && was_pressed)
     {
         m_sprite.setTextureRect(InactiveSpriteRect);
         was_pressed = false;
@@ -105,7 +105,7 @@ bool TwoStatesButton::ButtonBehavior()
             dlDrawList::getWindow()->draw(m_sprite);
         });
 
-    if (!g_SFMLRenderer.get_sfWindow()->hasFocus())
+    if (!g_SFMLRenderer.GetSfWindow()->hasFocus())
         return false;
 
     bool is_hovered_on_this_frame = is_hovered();
@@ -122,7 +122,7 @@ bool TwoStatesButton::ButtonBehavior()
         m_sprite.setTextureRect(InactiveSpriteRect);
     }
 
-    if (sf::Mouse::isButtonPressed(sf::Mouse::Left) && !was_pressed)
+    if (sf::Mouse::isButtonPressed(sf::Mouse::Button::Left) && !was_pressed)
     {
         if (is_hovered_on_this_frame)
         {
@@ -134,7 +134,7 @@ bool TwoStatesButton::ButtonBehavior()
         }
         was_pressed = true;
     }
-    else if (!sf::Mouse::isButtonPressed(sf::Mouse::Left) && was_pressed)
+    else if (!sf::Mouse::isButtonPressed(sf::Mouse::Button::Left) && was_pressed)
     {
         was_pressed = false;
 

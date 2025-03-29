@@ -10,11 +10,12 @@
 class dlDrawList
 {
     static inline std::vector<std::function<void()>> dlDrawCommands;
+    static inline std::vector<std::function<void()>> dlImguiList;
 public:
 
     inline static sf::RenderWindow* getWindow()
     {
-        return g_SFMLRenderer.get_sfWindow();
+        return g_SFMLRenderer.GetSfWindow();
     }
 
     inline static void DrawInvoke(const std::function<void()>& cmd)

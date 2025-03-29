@@ -3,6 +3,8 @@
 #include <chrono>
 #include "Timer.h"
 #include "sim/circuit.h"
+#include "imgui.h"
+#include "imgui-SFML.h"
 
 
 SFMLRenderer* SFMLRenderer::Create()
@@ -32,27 +34,65 @@ SFMLRenderer* SFMLRenderer::Get()
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
 
-#define CREATE_WINDOW 0
+#define CREATE_WINDOW 1
+
+static const ImWchar fontRange[] =
+{
+	//Latin
+	0x0020, 0x00FF, // Basic Latin + Latin Supplement
+	0x0400, 0x052F, // Cyrillic + Cyrillic Supplement
+	0x2DE0, 0x2DFF, // Cyrillic Extended-A
+	0xA640, 0xA69F, // Cyrillic Extended-B
+	//Chinese
+	0x2000, 0x206F, // General Punctuation
+	0x3000, 0x30FF, // CJK Symbols and Punctuations, Hiragana, Katakana
+	0x31F0, 0x31FF, // Katakana Phonetic Extensions
+	0xFF00, 0xFFEF, // Half-width characters
+	0xFFFD, 0xFFFD, // Invalid
+	0x4e00, 0x9FAF, // CJK Ideograms
+	0,
+};
+
 
 SFMLRenderer* SFMLRenderer::Init()
 {
 #if CREATE_WINDOW
+	auto mode = sf::VideoMode({ 1920, 1080 });
 	sf::ContextSettings settings;
-	settings.antialiasingLevel = 8;
+	settings.antiAliasingLevel = 0;
+	settings.majorVersion = 4;
+	settings.minorVersion = 6;
 
-	m_Window = std::make_unique<sf::RenderWindow>(sf::VideoMode(1920, 1080), "Wnd", sf::Style::Default, settings);
+	m_Window = std::make_unique<sf::RenderWindow>(mode, "Wnd", sf::Style::Default, sf::State::Windowed, settings);
 	m_Window->setFramerateLimit(240);
 	
-	m_view.setSize(sf::Vector2f({ m_Window->getSize().x * 1.05f, m_Window->getSize().y * 1.05f}));
+	m_view.setSize(sf::Vector2f(m_Window->getSize().x, m_Window->getSize().y));
 	m_view.setCenter(sf::Vector2f(m_Window->getSize()) / 2.0f);
 	m_view.zoom(1.65);
 	m_Window->setView(m_view);
 
-	SM_ASSERT(m_font.loadFromFile("c:\\Windows\\Fonts\\calibri.ttf"), "::SFMLRenderer() -> Failed to load font");
+	SM_ASSERT(m_font.openFromFile("c:\\Windows\\Fonts\\calibri.ttf"), "::SFMLRenderer() -> Failed to load font");
+
+	SM_ASSERT(ImGui::SFML::Init(*m_Window, false), "ImGui::SFML::Init");
+
+	ImGuiIO& io = ImGui::GetIO();
+	io.Fonts->Clear();
+	io.Fonts->AddFontFromFileTTF("c:\\Windows\\Fonts\\calibri.ttf", 16.0f);
+	ImGui::SFML::UpdateFontTexture();
+
 #endif
 	return this;
 }
 
+
+void drawText(const auto& text, float x, float y, int charSize, sf::Color color = sf::Color::Black)
+{
+	sf::Text t(g_SFMLRenderer.GetFont(), text, charSize);
+	t.setFillColor(color);
+	t.setPosition({ x, y });
+	t.setString(text);
+	dlDrawList::getWindow()->draw(t);
+};
 
 
 void DrawGraph(const Circuit::ResultsType& results, double totalTime, double maxVoltage)
@@ -78,27 +118,16 @@ void DrawGraph(const Circuit::ResultsType& results, double totalTime, double max
 	std::map<int, sf::VertexArray> graphs;
 	for (const auto& [nodeIndex, data] : results)
 	{
-		sf::VertexArray line(sf::LineStrip, data.size());
+		sf::VertexArray line(sf::PrimitiveType::LineStrip, data.size());
 		graphs[nodeIndex] = line;
 	}
 
-	sf::VertexArray grid(sf::Lines);
+	sf::VertexArray grid(sf::PrimitiveType::Lines);
 	int xGridLines = 10;
 	int yGridLines = 10;
 	float xStep = xMax / xGridLines;
 	float yStep = yMax / yGridLines;
 
-
-	auto drawText = [](const std::string& text, float x, float y, int charSize, sf::Color color = sf::Color::Black)
-		{
-			sf::Text t;
-			t.setFont(g_SFMLRenderer.get_font());
-			t.setCharacterSize(charSize);
-			t.setFillColor(color);
-			t.setPosition(x, y);
-			t.setString(text);
-			dlDrawList::getWindow()->draw(t);
-		};
 
 
 	sf::Color gridColor(50, 50, 50, 180);
@@ -152,13 +181,34 @@ void DrawGraph(const Circuit::ResultsType& results, double totalTime, double max
 }
 
 
+void DrawGrid(const sf::Vector2f& gridSize, const sf::Vector2f& cellSize, const sf::Color& color = sf::Color::Black)
+{
+	sf::VertexArray lines(sf::PrimitiveType::Lines);
+
+	for (float x = 0; x <= gridSize.x; x += cellSize.x) 
+	{
+		lines.append(sf::Vertex(sf::Vector2f(x, 0), color));
+		lines.append(sf::Vertex(sf::Vector2f(x, gridSize.y), color));
+		
+		drawText(std::format("{:.2f}", x), x, 0, 12, color);
+	}
+
+	for (float y = 0; y <= gridSize.y; y += cellSize.y) 
+	{
+		lines.append(sf::Vertex(sf::Vector2f(0, y), color));
+		lines.append(sf::Vertex(sf::Vector2f(gridSize.x, y), color));
+
+		drawText(std::format("{:.2f}", y), 0, y, 12, color);
+	}
+
+	dlDrawList::getWindow()->draw(lines);
+}
+
+
 SFMLRenderer* SFMLRenderer::OnRender()
 {
-	sf::Time prevTime;
-	sf::Time currTime;
-
-	sf::Vector2f prev_mouse_pos{};
-	sf::Vector2f curr_mouse_pos{};
+	sf::Vector2f PrevMousePos{};
+	sf::Vector2f CurrentMousePos{};
 	Circuit circuit;
 
 	Timer timer;
@@ -175,97 +225,99 @@ SFMLRenderer* SFMLRenderer::OnRender()
 
 	float Time = 0.5;
 	timer.Start();
-	//Circuit::ResultsType results = circuit.Test6(Time);
-	//circuit.Reset();
-	//Circuit::ResultsType results = circuit.Test4(Time);
+	Circuit::ResultsType results = circuit.Test8(Time);
+	circuit.Reset();
+
 	timer.Stop();
 
-
-	//std::cout << "Elapsed Time : " << std::format("{:.10f}", timer.GetElapsedSeconds()) << " s\n";
+	std::cout << "Elapsed Time : " << std::format("{:.10f}", timer.GetElapsedSeconds()) << " s\n";
 
 #if CREATE_WINDOW
+
+	sf::Clock DeltaClock;
 	while (m_Window->isOpen())
 	{
-		curr_mouse_pos = sf::Vector2f(sf::Mouse::getPosition());
-		currTime = m_Clock.getElapsedTime();
+		sf::Time dt = DeltaClock.restart();
 		
-		m_frameTime = currTime.asSeconds() - prevTime.asSeconds();
+		m_frameTime = dt.asSeconds();
 		m_fps = 1.f / m_frameTime;
-		delta_mouse = curr_mouse_pos - prev_mouse_pos;
+	
+		CurrentMousePos = sf::Vector2f(sf::Mouse::getPosition());
+		m_DeltaMouse = CurrentMousePos - PrevMousePos;
+		PrevMousePos = CurrentMousePos;
 
-		if (m_Window->hasFocus())
-		{
-			if (sf::Mouse::isButtonPressed(sf::Mouse::Right))
-				m_view.move(-(delta_mouse));
-		}
-
-		handleEvents();
+		HandleEvents();
 		
-	//	auto start = std::chrono::high_resolution_clock::now();
-		
-		//dlDrawList::DrawInvoke([]
-		//	{
-		//		char buffer[255];
-		//		sf::Text text;
-		//		text.setFont(g_SFMLRenderer.get_font());
-		//		text.setCharacterSize(20);
-		//		text.setFillColor(sf::Color::Black);
-		//		text.setPosition(10, 10);
-
-		//		auto result = std::format_to_n(buffer, 255, "FPS : {:.2f}", g_SFMLRenderer.m_fps);
-		//		buffer[result.size] = '\0';
-
-		//		text.setString(buffer);
-
-		//		dlDrawList::getWindow()->draw(text);
-		//	});
-
-		
-
+		ImGui::SFML::Update(*m_Window, dt);
+	
 		m_Window->setView(m_view);
 		m_Window->clear(sf::Color(200, 200, 200));
-		DrawGraph(results, Time, 5);
-		dlDrawList::Execute();
 		
+		{
+			static sf::Color gridColor(164, 164, 164, 255);
+
+			DrawGrid({ 1000.0f,1000.0f }, { 100.0f, 100.0f }, gridColor);
+			DrawGraph(results, Time, 5);
+
+			drawText(std::format("FPS : {:.2f}", m_fps), -10, -10, 10);
+			dlDrawList::Execute();
+
+
+			ImGui::Begin("Circuit");
+
+			float col[4] = { gridColor.r / 255.0f, gridColor.g / 255.0f, gridColor.b / 255.0f, gridColor.a / 255.0f };
+			ImGui::ColorEdit4("Grid Color", col);
+			gridColor = sf::Color(col[0] * 255, col[1] * 255, col[2] * 255, col[3] * 255);
+
+			ImGui::End();
+		}
+
+		ImGui::SFML::Render(*m_Window);
 		m_Window->display();
-
-//		std::println("3 : {:.10f}\n", std::chrono::duration_cast<std::chrono::duration<double>>(std::chrono::high_resolution_clock::now() - start).count());
-
-		prev_mouse_pos = curr_mouse_pos;
-		prevTime = currTime;
 
 	}
 #endif
+
+	ImGui::SFML::Shutdown();
 
 	return this;
 }
 
 
-void SFMLRenderer::handleEvents()
+void SFMLRenderer::HandleEvents()
 {
-	while (m_Window->pollEvent(m_event))
+	if (m_Window->hasFocus())
 	{
-		if (m_event.type == sf::Event::Closed)
+		if (sf::Mouse::isButtonPressed(sf::Mouse::Button::Right))
+			m_view.move(-(m_DeltaMouse));
+	}
+
+	while (std::optional event = m_Window->pollEvent())
+	{
+		if (event->is<sf::Event::Closed>())
 			m_Window->close();
 
-		if (m_event.type == sf::Event::Resized)
+		if (auto* resized = event->getIf<sf::Event::Resized>())
 		{
-			float NewAspectRatio = float(m_event.size.width) / float(m_event.size.height);
+			auto [width, height] = resized->size;
+
+			float NewAspectRatio = float(width) / float(height);
 			auto CurrSize = m_view.getSize();
-			m_view.setSize(CurrSize.x, CurrSize.x / NewAspectRatio);
+			m_view.setSize({ CurrSize.x, CurrSize.x / NewAspectRatio });
 		}
 		
 		if (m_Window->hasFocus())
 		{
-			if (m_event.type == sf::Event::MouseWheelScrolled)
+			if (auto* scrolledEvent = event->getIf<sf::Event::MouseWheelScrolled>())
 			{
-				if (m_event.mouseWheelScroll.delta > 0)
+				if (scrolledEvent->delta > 0)
 					m_view.zoom(0.95);
 
-				else if (m_event.mouseWheelScroll.delta < 0)
+				else if (scrolledEvent->delta < 0)
 					m_view.zoom(1.05f);
 			}
 		}
+		ImGui::SFML::ProcessEvent(*m_Window, *event);
 	}
 }
 
@@ -274,11 +326,10 @@ void SFMLRenderer::handleEvents()
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
 
-sf::Event*			SFMLRenderer::get_sfEvents()	{ return &m_event;}
-sf::View*			SFMLRenderer::get_sfView()		{ return &m_view;}
-sf::RenderWindow*	SFMLRenderer::get_sfWindow()	{ return m_Window.get();}
-sf::Font&			SFMLRenderer::get_font()		{ return m_font;}
-sf::Vector2f		SFMLRenderer::GetDeltaMouse()	{ return delta_mouse; }
+sf::View*			SFMLRenderer::GEtSfView()		{ return &m_view;}
+sf::RenderWindow*	SFMLRenderer::GetSfWindow()		{ return m_Window.get();}
+sf::Font&			SFMLRenderer::GetFont()			{ return m_font;}
+sf::Vector2f		SFMLRenderer::GetDeltaMouse()	{ return m_DeltaMouse; }
 
 sf::Vector2f SFMLRenderer::GetWorldMousePos()
 {

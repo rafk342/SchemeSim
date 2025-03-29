@@ -12,9 +12,10 @@ void Circuit::Reset()
 	m_GroundNode = nullptr;
 }
 
+
 eNode* Circuit::CreateNode()
 {
-	size_t index = m_Nodes.size();
+	u64 index = m_Nodes.size();
 	m_Nodes.emplace_back(std::make_unique<eNode>(index));
 
 	int n = m_Nodes.size() - 1;
@@ -24,15 +25,26 @@ eNode* Circuit::CreateNode()
 	return m_Nodes.back().get();
 }
 
+void Circuit::RemoveNode(eNode* node)
+{
+	if (!node)
+		return;
+
+	// Todo
+}
+
+
 eVoltageSource* Circuit::AddVoltageSource(double voltage)
 {
 	return AddElement<eVoltageSource>(voltage);
 }
 
+
 eResistor* Circuit::AddResistor(double resistance)
 {
 	return AddElement<eResistor>(resistance);
 }
+
 
 void Circuit::RemoveElement(eElement* element)
 {
@@ -45,11 +57,13 @@ void Circuit::RemoveElement(eElement* element)
 		m_Elements.erase(it);			// Pins will be released from connected nodes in destructor
 }
 
+
 void Circuit::Connect(ePin* pin, eNode* node)
 {
 	if (pin && node)
 		pin->ConnectToNode(node);
 }
+
 
 void Circuit::AssembleMatrix()
 {
@@ -61,12 +75,13 @@ void Circuit::AssembleMatrix()
 	}
 }
 
+
 eNode* Circuit::LookupGroundNode()
 {
 	if (m_Nodes.empty())
 		return nullptr;
 
-	size_t MaxCountConnectedPins = 0;			// Ground node is often the one with the largest number of connected elements
+	u64 MaxCountConnectedPins = 0;			// Ground node is often the one with the largest number of connected elements
 	eNode* groundNode = nullptr;
 	{
 		for (auto& node : m_Nodes)
@@ -107,6 +122,7 @@ eNode* Circuit::LookupGroundNode()
 	return groundNode;
 }
 
+
 void Circuit::AdjustVoltages(eNode* ToDesiredGround)
 {
 	if (!ToDesiredGround || ToDesiredGround == m_GroundNode)
@@ -117,18 +133,19 @@ void Circuit::AdjustVoltages(eNode* ToDesiredGround)
 
 	for (auto& node : m_Nodes)
 	{
-		double newVoltage = node->GetVoltage() + offset;
-		node->SetVoltage(newVoltage);
+		node->SetVoltage(node->GetVoltage() + offset);
 	}
 }
 
-size_t Circuit::GetNodeMtxIndex(eNode* node)
+
+u64 Circuit::GetNodeMtxIndex(eNode* node)
 {
-	size_t nodeIdx = node->GetIndex();
-	size_t gndIdx = m_GroundNode->GetIndex();
+	u64 nodeIdx = node->GetIndex();
+	u64 gndIdx = m_GroundNode->GetIndex();
 
 	return (nodeIdx > gndIdx) ? nodeIdx - 1 : nodeIdx;
 }
+
 
 void Circuit::Solve()
 {
@@ -146,12 +163,133 @@ void Circuit::Solve()
 	}
 }
 
+
 void Circuit::FinalizeMatrixSize()
 {
 	for (auto& element : m_Elements)
 	{
 		element->InitMatrix(m_Matrix);
 	}
+}
+
+
+Circuit::ResultsType Circuit::Simulate(double totalTime, double dt)
+{
+	ResultsType results;
+	if (!m_GroundNode)
+		m_GroundNode = LookupGroundNode();
+
+	u64 steps = u64(totalTime / dt);
+	std::ofstream file("results.txt");
+	file << "Steps: " << steps << '\n';
+	file << "Total Time: " << totalTime << '\n';
+	file << "Dt: " << dt << '\n';
+
+
+	for (u64 i = 0; i < steps; ++i)
+	{
+		file << std::format("Step: {}  Time: {:.7f}\n", i, m_CurrTime);
+
+		m_Matrix.Clear();
+
+		for (auto& element : m_Elements)
+		{
+			element->Stamp(m_Matrix, m_GroundNode, dt);
+		}
+		
+		m_Matrix.Print(file);
+
+		m_Matrix.Solve();
+		for (auto& node : m_Nodes)
+		{
+			if (node.get() == m_GroundNode)
+			{
+				node->SetVoltage(0.0);
+			}
+			else
+			{
+				node->SetVoltage(m_Matrix.GetVoltage(GetNodeMtxIndex(node.get())));
+			}
+		}
+
+		for (auto& element : m_Elements)
+		{
+			element->Update(m_Matrix, dt);
+		}
+
+		m_CurrTime += dt;
+		for (auto& node : m_Nodes)
+		{
+			auto idx = node->GetIndex();
+			results[idx].emplace_back(m_CurrTime, node->GetVoltage());
+
+			file << "Node " << idx << " : " << node->GetVoltage() << '\n';
+		}
+		file << "-----------------------------------\n";
+		static bool once = false;
+		if (m_CurrTime > 0.25)
+		{
+			if (!once)
+				if (eButton* button = static_cast<eButton*>(m_Elements.back().get()))
+					if (button->GetType() == ty_Button)
+						button->Release();
+
+			once = true;
+		}
+	}
+
+	file.close();
+	return results;
+}
+
+
+
+
+void Circuit::Test1()
+{
+	// (v1)---n0--(R1)---n1-----(p)---n2---(R2)----
+	//  |                        |                |
+	//  |                        |                |
+	//  |                        |                |
+	//  -------------gnd---------------------------
+
+	eNode* n0 = CreateNode();
+	eNode* n1 = CreateNode();
+	eNode* n2 = CreateNode();
+	eNode* gnd_node = CreateNode();
+
+	ePotentiometer* p = AddElement<ePotentiometer>(*this, 10, 0.5);
+	eResistor* r1 = AddResistor(5.0);
+	eResistor* r2 = AddResistor(5.0);
+	eVoltageSource* v1 = AddVoltageSource(10.0f);
+
+	v1->GetPositivePin()->ConnectToNode(n0);
+	v1->GetNegativePin()->ConnectToNode(gnd_node);
+
+	r1->GetEpin(0)->ConnectToNode(n0);
+	r1->GetEpin(1)->ConnectToNode(n1);
+
+	p->GetLeftPin()->ConnectToNode(n1);
+	p->ConnectOutputPinToNode(n2);
+	p->GetRightPin()->ConnectToNode(gnd_node);
+
+	r2->GetEpin(0)->ConnectToNode(n2);
+	r2->GetEpin(1)->ConnectToNode(gnd_node);
+
+	m_GroundNode = gnd_node;
+	FinalizeMatrixSize();
+	AssembleMatrix();
+	Solve();
+
+	std::cout << "R1 Current : " << r1->GetCurrent() << std::endl;
+	std::cout << "R2 Current : " << r2->GetCurrent() << std::endl;
+
+	for (auto& node : m_Nodes)
+	{
+		std::cout << "Node " << node->GetIndex() << " : " << node->GetVoltage() << std::endl;
+	}
+
+	m_Matrix.Print(std::cout);
 }
 
 void Circuit::Test3()
@@ -246,209 +384,6 @@ void Circuit::Test3()
 	m_Matrix.Print(std::cout);
 }
 
-Circuit::ResultsType Circuit::Simulate(double totalTime, double dt)
-{
-	ResultsType results;
-	if (!m_GroundNode)
-		m_GroundNode = LookupGroundNode();
-
-	size_t steps = static_cast<size_t>(totalTime / dt);
-	std::ofstream file("results.txt");
-	file << "Steps: " << steps << '\n';
-	file << "Total Time: " << totalTime << '\n';
-	file << "Dt: " << dt << '\n';
-
-
-	for (size_t i = 0; i < steps; ++i)
-	{
-		file << std::format("Step: {}  Time: {:.7f}\n", i, m_CurrTime);
-
-		m_Matrix.Clear();
-
-		for (auto& element : m_Elements)
-		{
-			element->Stamp(m_Matrix, m_GroundNode, dt);
-		}
-		file << "Matrix A:\n" << m_Matrix.GetMatrix() << "\n";
-		file << "Vector b:\n" << m_Matrix.GetVector() << "\n";
-
-		m_Matrix.Solve();
-		for (auto& node : m_Nodes)
-		{
-			if (node.get() == m_GroundNode)
-			{
-				node->SetVoltage(0.0);
-			}
-			else
-			{
-				node->SetVoltage(m_Matrix.GetVoltage(GetNodeMtxIndex(node.get())));
-			}
-		}
-
-		for (auto& element : m_Elements)
-		{
-			element->Update(m_Matrix, dt);
-
-			//if (eDiode* diode = dynamic_cast<eDiode*>(element.get()))
-			//{
-			//	file << "Diode " << diode->GetName() << " Vd: " << diode->GetVoltDrop() << " G: " << diode->GetG() << " Ieq: " << diode->GetIeq() << '\n';
-			//}
-		}
-
-		m_CurrTime += dt;
-		for (auto& node : m_Nodes)
-		{
-			auto idx = node->GetIndex();
-			results[idx].emplace_back(m_CurrTime, node->GetVoltage());
-
-			file << "Node " << idx << " : " << node->GetVoltage() << '\n';
-		}
-		file << "-----------------------------------\n";
-
-		static bool bSetSlider = false;
-		if (m_CurrTime > 0.25 && !bSetSlider)
-		{
-			bSetSlider = true;
-			if (m_Elements.size() > 4 && m_Elements[4]->GetType() == ty_Potentiometer)
-				static_cast<ePotentiometer*>(m_Elements[4].get())->SetSliderPosition(0.1);
-		}
-	}
-
-	file.close();
-	return results;
-}
-
-void Circuit::Test1()
-{
-	// (v1)---n0--(R1)---n1-----(p)---n2---(R2)----
-	//  |                        |                |
-	//  |                        |                |
-	//  |                        |                |
-	//  -------------gnd---------------------------
-
-	eNode* n0 = CreateNode();
-	eNode* n1 = CreateNode();
-	eNode* n2 = CreateNode();
-	eNode* gnd_node = CreateNode();
-
-	ePotentiometer* p = AddElement<ePotentiometer>(*this, 10, 1.0f);
-	eVoltageSource* v1 = AddVoltageSource(10.0f);
-
-	eResistor* r1 = AddResistor(5.0);
-	eResistor* r2 = AddResistor(5.0);
-
-	v1->GetPositivePin()->ConnectToNode(n0);
-	v1->GetNegativePin()->ConnectToNode(gnd_node);
-
-	r1->GetEpin(0)->ConnectToNode(n0);
-	r1->GetEpin(1)->ConnectToNode(n1);
-
-	p->GetLeftPin()->ConnectToNode(n1);
-	p->ConnectOutputPinToNode(n2);
-	p->GetRightPin()->ConnectToNode(gnd_node);
-
-	r2->GetEpin(0)->ConnectToNode(n2);
-	r2->GetEpin(1)->ConnectToNode(gnd_node);
-
-	m_GroundNode = gnd_node;
-	FinalizeMatrixSize();
-	AssembleMatrix();
-	Solve();
-
-	std::cout << "R1 Current : " << r1->GetCurrent() << std::endl;
-	std::cout << "R2 Current : " << r2->GetCurrent() << std::endl;
-
-	for (auto& node : m_Nodes)
-	{
-		std::cout << "Node " << node->GetIndex() << " : " << node->GetVoltage() << std::endl;
-	}
-
-	m_Matrix.Print(std::cout);
-}
-
-void Circuit::Test2()
-{
-	// (v1)----(n1)---R1-------------------GND
-	//          |
-	//          |-----R2----(n2)-----R3----GND
-
-	eNode* n1 = CreateNode();
-	eNode* n2 = CreateNode();
-
-	eNode* gnd_node = CreateNode();
-
-	eVoltageSource* v1 = AddVoltageSource(5.0);
-	eResistor* r1 = AddResistor(0.5f);
-	eResistor* r2 = AddResistor(20.0);
-	eResistor* r3 = AddResistor(3.0);
-
-	eResistor* r4 = AddResistor(0.5);
-	eResistor* r5 = AddResistor(0.6);
-	eResistor* r6 = AddResistor(0.4);
-
-	v1->GetPositivePin()->ConnectToNode(n1);
-	v1->GetNegativePin()->ConnectToNode(gnd_node);
-
-	r1->GetEpin(0)->ConnectToNode(n1);
-	r1->GetEpin(1)->ConnectToNode(gnd_node);
-
-	r2->GetEpin(0)->ConnectToNode(n1);
-	r2->GetEpin(1)->ConnectToNode(n2);
-
-	r3->GetEpin(0)->ConnectToNode(n2);
-	r3->GetEpin(1)->ConnectToNode(gnd_node);
-
-	FinalizeMatrixSize();
-	AssembleMatrix();
-	Solve();
-
-	std::cout << "R1 Current : " << r1->GetCurrent() << std::endl;
-	std::cout << "R2 Current : " << r2->GetCurrent() << std::endl;
-	std::cout << "R3 Current : " << r3->GetCurrent() << std::endl;
-	std::cout << "R4 Current : " << r4->GetCurrent() << std::endl;
-	std::cout << "R5 Current : " << r5->GetCurrent() << std::endl;
-
-	for (auto& node : m_Nodes)
-	{
-		std::cout << "Node " << node->GetIndex() << " : " << node->GetVoltage() << std::endl;
-	}
-
-	m_Matrix.Print(std::cout);
-}
-
-Circuit::ResultsType Circuit::Test6(double totalTime)
-{
-	// n3----(vs)----n0----(R1)----n1---(L1)----n2----(C1)----n3
-
-	eNode* n0 = CreateNode();
-	eNode* n1 = CreateNode();
-	eNode* n2 = CreateNode();
-	eNode* n3 = CreateNode();
-
-	eVoltageSource* vs = AddElement<eVoltageSource>(5.0); // 5V DC
-	eResistor* r1 = AddElement<eResistor>(10);// 10 Ohm
-	eInductor* l1 = AddElement<eInductor>(1); // 1H
-	eCapacitor* c1 = AddElement<eCapacitor>(0.000010); // 10uF
-
-	vs->GetPositivePin()->ConnectToNode(n0);
-
-	r1->GetEpin(0)->ConnectToNode(n0);
-	r1->GetEpin(1)->ConnectToNode(n1);
-
-	l1->GetEpin(0)->ConnectToNode(n1);
-	l1->GetEpin(1)->ConnectToNode(n2);
-
-	c1->GetEpin(0)->ConnectToNode(n2);
-	c1->GetEpin(1)->ConnectToNode(n3);
-
-	vs->GetNegativePin()->ConnectToNode(n3);
-
-	FinalizeMatrixSize();
-
-	double dt = 0.001;
-	return Simulate(totalTime, dt);
-}
-
 Circuit::ResultsType Circuit::Test4(double totalTime)
 {
 	// p - Potentiometer
@@ -464,7 +399,7 @@ Circuit::ResultsType Circuit::Test4(double totalTime)
 	eNode* n0 = CreateNode();
 	eNode* n1 = CreateNode();
 	eNode* n2 = CreateNode();
-	
+
 
 	eVoltageSource* Vs = AddElement<eVoltageSource>(5.0, 10); // 5V, 10Hz
 	eDiode* d1 = AddElement<eDiode>();
@@ -485,7 +420,7 @@ Circuit::ResultsType Circuit::Test4(double totalTime)
 
 	m_GroundNode = n2;
 
-	double dt = 0.001;
+	double dt = 0.0001;
 	FinalizeMatrixSize();
 	ResultsType results = Simulate(totalTime, dt);
 
@@ -518,7 +453,7 @@ Circuit::ResultsType Circuit::Test5(double totalTime)
 	eDiode* d3 = AddElement<eDiode>();
 	eDiode* d4 = AddElement<eDiode>();
 
-	eResistor* r1 = AddElement<eResistor>(100); 
+	eResistor* r1 = AddElement<eResistor>(100);
 	eCapacitor* c1 = AddElement<eCapacitor>(0.001); // 1mF 
 
 	Vs->GetPositivePin()->ConnectToNode(n1);
@@ -550,3 +485,128 @@ Circuit::ResultsType Circuit::Test5(double totalTime)
 
 	return results;
 }
+
+Circuit::ResultsType Circuit::Test6(double totalTime)
+{
+	// n3----(vs)----n0----(R1)----n1---(L1)----n2----(C1)----n3
+
+	eNode* n0 = CreateNode();
+	eNode* n1 = CreateNode();
+	eNode* n2 = CreateNode();
+	eNode* n3 = CreateNode();
+
+	eVoltageSource* vs = AddElement<eVoltageSource>(5.0); // 5V DC
+	eResistor* r1 = AddElement<eResistor>(10);// 10 Ohm
+	eInductor* l1 = AddElement<eInductor>(1); // 1H
+	eCapacitor* c1 = AddElement<eCapacitor>(0.000010); // 10uF
+
+	vs->GetPositivePin()->ConnectToNode(n0);
+
+	r1->GetEpin(0)->ConnectToNode(n0);
+	r1->GetEpin(1)->ConnectToNode(n1);
+
+	l1->GetEpin(0)->ConnectToNode(n1);
+	l1->GetEpin(1)->ConnectToNode(n2);
+
+	c1->GetEpin(0)->ConnectToNode(n2);
+	c1->GetEpin(1)->ConnectToNode(n3);
+
+	vs->GetNegativePin()->ConnectToNode(n3);
+
+	FinalizeMatrixSize();
+
+	double dt = 0.00005;
+	return Simulate(totalTime, dt);
+}
+
+Circuit::ResultsType Circuit::Test7(double totalTime)
+{ 
+	//  |-(vs)---n1---(r0)---n2---(btn)---|
+	//  |                                 |
+	//  n0-------------(l1)---------------n3
+
+	eNode* n0 = CreateNode();
+	eNode* n1 = CreateNode();
+	eNode* n2 = CreateNode();
+	eNode* n3 = CreateNode();
+
+	eVoltageSource* vs = AddElement<eVoltageSource>(5); // 5V DC
+	eResistor* r0 = AddElement<eResistor>(100);// 10 Ohm
+	eInductor* l1 = AddElement<eInductor>(0.2); // 1H
+	eButton* button = AddElement<eButton>(eButton::NormalOpen);
+	button->Press();
+
+	vs->GetNegativePin()->ConnectToNode(n0);
+	vs->GetPositivePin()->ConnectToNode(n1);
+
+	r0->GetEpin(0)->ConnectToNode(n1);
+	r0->GetEpin(1)->ConnectToNode(n2);
+
+	button->GetEpin(0)->ConnectToNode(n2);
+	button->GetEpin(1)->ConnectToNode(n3);
+
+	l1->GetEpin(0)->ConnectToNode(n0);
+	l1->GetEpin(1)->ConnectToNode(n3);
+
+	m_GroundNode = n0;
+
+	FinalizeMatrixSize();
+	double dt = 0.00005;
+	return Simulate(totalTime, dt);
+}
+
+Circuit::ResultsType Circuit::Test8(double totalTime)
+{	//              
+	//  ----n0---   t ---n2----
+	//  |        ) ║ (        |
+	// (vs)      ) ║ (       (r)
+	//  |        ) ║ (        |
+	//  ----n1---      ----n3--
+
+	eNode* n0 = CreateNode();
+	eNode* n1 = CreateNode();
+	eNode* n2 = CreateNode();
+	eNode* n3 = CreateNode();
+
+	eVoltageSource* vs = AddElement<eVoltageSource>(5, 20);
+	eResistor* r = AddElement<eResistor>(100);
+	eTransformer* t = AddElement<eTransformer>(1.0, 1.0);
+
+	vs->GetPositivePin()->ConnectToNode(n0);
+	vs->GetNegativePin()->ConnectToNode(n1);
+	
+	t->GetPrimaryPin1()->ConnectToNode(n0);
+	t->GetPrimaryPin2()->ConnectToNode(n1);
+	t->GetSecondaryPin1()->ConnectToNode(n2);
+	t->GetSecondaryPin2()->ConnectToNode(n3);
+
+	r->GetEpin(0)->ConnectToNode(n2);
+	r->GetEpin(1)->ConnectToNode(n3);
+
+	m_GroundNode = n0;
+
+	FinalizeMatrixSize();
+	double dt = 0.001;
+	return Simulate(totalTime, dt);
+}
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

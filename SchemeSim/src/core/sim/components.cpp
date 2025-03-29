@@ -7,11 +7,11 @@
 
 ePin::~ePin() { ReleaseNode(); }
 
-bool ePin::IsConnectedToNode() { return (m_Enode != nullptr); }
-bool ePin::HasParentElement() { return (m_Element != nullptr); }
-void ePin::SetParentElement(eElement* element) { m_Element = element; }
-eElement* ePin::GetParentElement() { return m_Element; }
-eNode* ePin::GetConnectedNode() { return m_Enode; }
+bool		ePin::IsConnectedToNode()						{ return (m_Enode != nullptr); }
+bool		ePin::HasParentElement()						{ return (m_Element != nullptr); }
+void		ePin::SetParentElement(eElement* element)		{ m_Element = element; }
+eElement*	ePin::GetParentElement()						{ return m_Element; }
+eNode*		ePin::GetConnectedNode()						{ return m_Enode; }
 
 
 void ePin::ConnectToNode(eNode* enode)
@@ -38,9 +38,10 @@ void ePin::ReleaseNode()
 // 											Node
 
 
-eNode::eNode(size_t index)
+eNode::eNode(u64 index)
 	: m_NodeIndex(index)
 { }
+
 
 eNode::~eNode()
 {
@@ -49,6 +50,7 @@ eNode::~eNode()
 
 	m_ePins.clear();
 }
+
 
 void eNode::AddEpin(ePin* epin)
 {
@@ -108,6 +110,7 @@ const char* eElement::GetTypeName()
 	case ty_Potentiometer:	return "Potentiometer";
 	case ty_Button:			return "Button";
 	case ty_Contact:		return "Contact";
+	case ty_Transformer:    return "Transformer";
 	default:				return "Unknown";
 	}
 }
@@ -177,12 +180,12 @@ void eResistor::Stamp(CircuitMtx& mtx, eNode* GndNode, double dt)
 	Eigen::MatrixXd& A = mtx.GetMatrix();
 	Eigen::VectorXd& b = mtx.GetVector();
 
-	size_t idx1 = node1->GetIndex();
-	size_t idx2 = node2->GetIndex();
-	size_t GndIdx = GndNode->GetIndex();
+	u64 idx1 = node1->GetIndex();
+	u64 idx2 = node2->GetIndex();
+	u64 GndIdx = GndNode->GetIndex();
 
-	size_t i = (idx1 > GndIdx) ? idx1 - 1 : idx1;
-	size_t j = (idx2 > GndIdx) ? idx2 - 1 : idx2;
+	u64 i = (idx1 > GndIdx) ? idx1 - 1 : idx1;
+	u64 j = (idx2 > GndIdx) ? idx2 - 1 : idx2;
 
 	if (node1 != GndNode && node2 != GndNode)
 	{
@@ -272,7 +275,7 @@ void ePotentiometer::SetSliderPosition(double position)
 
 	m_SliderPosition = position;
 
-	const double min = 1e-9;
+	double min = 1e-9;
 	double r1 = m_TotalResistance * m_SliderPosition;
 	double r2 = m_TotalResistance * (1.0 - m_SliderPosition);
 
@@ -280,9 +283,13 @@ void ePotentiometer::SetSliderPosition(double position)
 	m_R2.SetResistance(r2 < min ? min : r2);
 }
 
-double ePotentiometer::GetSliderPosition() const { return m_SliderPosition; }
 
-double ePotentiometer::GetTotalResistance() const { return m_TotalResistance; }
+double	ePotentiometer::GetSliderPosition() const	{ return m_SliderPosition; }
+double	ePotentiometer::GetTotalResistance() const	{ return m_TotalResistance; }
+ePin*	ePotentiometer::GetLeftPin()				{ return m_R1.GetEpin(0); }
+ePin*	ePotentiometer::GetRightPin()				{ return m_R2.GetEpin(1); }
+eNode*	ePotentiometer::GetOutputNode()				{ return m_MiddleNode; }
+
 
 void ePotentiometer::SetTotalResistance(double resistance)
 {
@@ -291,17 +298,20 @@ void ePotentiometer::SetTotalResistance(double resistance)
 	m_R2.SetResistance(m_TotalResistance * (1.0 - m_SliderPosition));
 }
 
+
 void ePotentiometer::ConnectOutputPinToNode(eNode* node)
 {
 	m_R1.GetEpin(1)->ConnectToNode(node);
 	m_R2.GetEpin(0)->ConnectToNode(node);
 }
 
+
 void ePotentiometer::ReleaseNodeFromOutputPin()
 {
 	m_R1.GetEpin(1)->ConnectToNode(m_MiddleNode);
 	m_R2.GetEpin(0)->ConnectToNode(m_MiddleNode);
 }
+
 
 double ePotentiometer::GetOutputVoltage()
 {
@@ -337,7 +347,7 @@ double eVoltageSource::GetVoltage(double t) const
 
 void eVoltageSource::InitMatrix(CircuitMtx& mtx)
 {
-	size_t numNodes = mtx.GetNumNodes();
+	u64 numNodes = mtx.GetNumNodes();
 	m_eqIndex = numNodes;
 	mtx.Resize(numNodes + 1);
 }
@@ -370,13 +380,13 @@ void eVoltageSource::Stamp(CircuitMtx& mtx, eNode* GndNode, double dt)
 	Eigen::MatrixXd& A = mtx.GetMatrix();
 	Eigen::VectorXd& b = mtx.GetVector();
 
-	size_t idx1 = n1->GetIndex();
-	size_t idx2 = n2->GetIndex();
-	size_t gndIdx = GndNode->GetIndex();
-	size_t eqIdx = m_eqIndex;
+	u64 idx1 = n1->GetIndex();
+	u64 idx2 = n2->GetIndex();
+	u64 gndIdx = GndNode->GetIndex();
+	u64 eqIdx = m_eqIndex;
 
-	size_t i = (idx1 > gndIdx) ? idx1 - 1 : idx1;
-	size_t j = (idx2 > gndIdx) ? idx2 - 1 : idx2;
+	u64 i = (idx1 > gndIdx) ? idx1 - 1 : idx1;
+	u64 j = (idx2 > gndIdx) ? idx2 - 1 : idx2;
 
 	if (n1 != GndNode && n2 != GndNode) 
 	{
@@ -447,12 +457,12 @@ void eCapacitor::Stamp(CircuitMtx& mtx, eNode* GndNode, double dt)
 	Eigen::MatrixXd& A = mtx.GetMatrix();
 	Eigen::VectorXd& b = mtx.GetVector();
 
-	size_t idx1 = node1->GetIndex();
-	size_t idx2 = node2->GetIndex();
-	size_t GndIdx = GndNode->GetIndex();
+	u64 idx1 = node1->GetIndex();
+	u64 idx2 = node2->GetIndex();
+	u64 GndIdx = GndNode->GetIndex();
 
-	size_t i = (idx1 > GndIdx) ? idx1 - 1 : idx1;
-	size_t j = (idx2 > GndIdx) ? idx2 - 1 : idx2;
+	u64 i = (idx1 > GndIdx) ? idx1 - 1 : idx1;
+	u64 j = (idx2 > GndIdx) ? idx2 - 1 : idx2;
 
 	if (node1 != GndNode && node2 != GndNode)
 	{
@@ -538,12 +548,12 @@ void eDiode::Stamp(CircuitMtx& mtx, eNode* GndNode, double dt)
 	Eigen::MatrixXd& A = mtx.GetMatrix();
 	Eigen::VectorXd& b = mtx.GetVector();
 
-	size_t idx1 = node1->GetIndex();
-	size_t idx2 = node2->GetIndex();
-	size_t GndIdx = GndNode->GetIndex();
+	u64 idx1 = node1->GetIndex();
+	u64 idx2 = node2->GetIndex();
+	u64 GndIdx = GndNode->GetIndex();
 
-	size_t i = (idx1 > GndIdx) ? idx1 - 1 : idx1;
-	size_t j = (idx2 > GndIdx) ? idx2 - 1 : idx2;
+	u64 i = (idx1 > GndIdx) ? idx1 - 1 : idx1;
+	u64 j = (idx2 > GndIdx) ? idx2 - 1 : idx2;
 
 	double Vd = GetVoltDrop();
 	double G = (m_Is / m_Vt) * std::exp(Vd / m_Vt);
@@ -622,12 +632,12 @@ void eDiode::Stamp(CircuitMtx& mtx, eNode* GndNode, double dt)
 	Eigen::MatrixXd& A = mtx.GetMatrix();
 	Eigen::VectorXd& b = mtx.GetVector();
 
-	size_t idx1 = node1->GetIndex();
-	size_t idx2 = node2->GetIndex();
-	size_t GndIdx = GndNode->GetIndex();
+	u64 idx1 = node1->GetIndex();
+	u64 idx2 = node2->GetIndex();
+	u64 GndIdx = GndNode->GetIndex();
 
-	size_t i = (idx1 > GndIdx) ? idx1 - 1 : idx1;
-	size_t j = (idx2 > GndIdx) ? idx2 - 1 : idx2;
+	u64 i = (idx1 > GndIdx) ? idx1 - 1 : idx1;
+	u64 j = (idx2 > GndIdx) ? idx2 - 1 : idx2;
 
 	if (node1 != GndNode && node2 != GndNode) 
 	{
@@ -795,13 +805,13 @@ void eInductor::Stamp(CircuitMtx& mtx, eNode* GndNode, double dt)
 	Eigen::MatrixXd& A = mtx.GetMatrix();
 	Eigen::VectorXd& b = mtx.GetVector();
 
-	size_t idx1 = node1->GetIndex();
-	size_t idx2 = node2->GetIndex();
-	size_t GndIdx = GndNode->GetIndex();
-	size_t currentIdx = m_CurrenIndex;
+	u64 idx1 = node1->GetIndex();
+	u64 idx2 = node2->GetIndex();
+	u64 GndIdx = GndNode->GetIndex();
+	u64 currentIdx = m_CurrenIndex;
 
-	size_t i = (idx1 > GndIdx) ? idx1 - 1 : idx1;
-	size_t j = (idx2 > GndIdx) ? idx2 - 1 : idx2;
+	u64 i = (idx1 > GndIdx) ? idx1 - 1 : idx1;
+	u64 j = (idx2 > GndIdx) ? idx2 - 1 : idx2;
 
 
 	if (node1 != GndNode)
@@ -837,10 +847,11 @@ void eInductor::Update(CircuitMtx& mtx, double dt)
 
 void eInductor::InitMatrix(CircuitMtx& mtx)
 {
-	size_t numNodes = mtx.GetNumNodes();
+	u64 numNodes = mtx.GetNumNodes();
 	m_CurrenIndex = numNodes;
 	mtx.Resize(numNodes + 1);
 }
+
 
 double eInductor::GetVoltDrop()
 {
@@ -863,6 +874,112 @@ double eInductor::GetCurrent()
 }
 
 
+
+eTransformer::eTransformer(double Inductance1, double ratio) 
+	: eTransformer(Inductance1, Inductance1 * std::pow(ratio, 2), 0.95)
+{ }
+
+eTransformer::eTransformer(double Inductance1, double Inductance2, double transformCoef)
+	: m_L1(Inductance1)
+	, m_L2(Inductance2)
+	, m_CouplCoef(transformCoef)
+	, m_I1(0.0)
+	, m_I2(0.0)
+{
+	//
+	// --0 | 3--
+	// --1 | 2--
+	//
+	SetNumEpins(4);
+
+	m_CouplCoef = std::clamp(m_CouplCoef, 0.0, 1.0);
+	m_L1 = std::clamp(m_L1, 1e-6, 1e6);
+	m_L2 = std::clamp(m_L2, 1e-6, 1e6);
+}
+
+
+inline void eTransformer::InitMatrix(CircuitMtx& mtx)
+{
+	u64 numNodes = mtx.GetNumNodes();
+	m_I1_Idx = numNodes;
+	m_I2_Idx = numNodes + 1;
+	mtx.Resize(numNodes + 2);
+}
+
+
+void eTransformer::Stamp(CircuitMtx& mtx, eNode* GndNode, double dt)
+{
+	eNode* n1 = GetEpin(0)->GetConnectedNode();
+	eNode* n2 = GetEpin(1)->GetConnectedNode();
+	eNode* n3 = GetEpin(2)->GetConnectedNode();
+	eNode* n4 = GetEpin(3)->GetConnectedNode();
+
+	if (!n1 || !n2 || !n3 || !n4)
+		return;
+
+	Eigen::MatrixXd& A = mtx.GetMatrix();
+	Eigen::VectorXd& b = mtx.GetVector();
+	u64 gndIdx = GndNode->GetIndex();
+
+	auto GetNodeIndex = [gndIdx](eNode* node) -> u64
+		{
+			u64 idx = node->GetIndex();
+			return (idx > gndIdx) ? idx - 1 : idx;
+		};
+	
+	u64 i1 = GetNodeIndex(n1);
+	u64 i2 = GetNodeIndex(n2);
+	u64 i3 = GetNodeIndex(n3);
+	u64 i4 = GetNodeIndex(n4);
+
+	double L1 = m_L1;
+	double L2 = m_L2;
+	double M = m_L2Sign * m_CouplCoef * std::sqrt(L1 * L2);
+
+
+	if (n1 != GndNode) 
+	{
+		A(i1, m_I1_Idx) += 1.0;
+		A(m_I1_Idx, i1) += 1.0;
+	}
+	if (n2 != GndNode) 
+	{
+		A(i2, m_I1_Idx) -= 1.0;
+		A(m_I1_Idx, i2) -= 1.0;
+	}
+
+
+	if (n3 != GndNode) 
+	{
+		A(i3, m_I2_Idx) +=  1.0;
+		A(m_I2_Idx, i3) +=  1.0;
+	}
+	if (n4 != GndNode)
+	{
+		A(i4, m_I2_Idx) -=  1.0;
+		A(m_I2_Idx, i4) -=  1.0;
+	}
+
+	A(m_I1_Idx, m_I1_Idx) -= L1 / dt;
+	A(m_I1_Idx, m_I2_Idx) -= M / dt;
+	A(m_I2_Idx, m_I1_Idx) -= M / dt;
+	A(m_I2_Idx, m_I2_Idx) -= L2 / dt;
+
+	b(m_I1_Idx) -= (L1 * m_I1 + M * m_I2) / dt;
+	b(m_I2_Idx) -= (M * m_I1 + L2 * m_I2) / dt;
+}
+
+
+void eTransformer::Update(CircuitMtx& mtx, double dt)
+{
+	m_I1 = mtx.GetSolution()(m_I1_Idx);
+	m_I2 = mtx.GetSolution()(m_I2_Idx);
+	
+	double v1 = GetEpin(0)->GetVoltage() - GetEpin(1)->GetVoltage();
+	double v2 = GetEpin(2)->GetVoltage() - GetEpin(3)->GetVoltage();
+}
+
+
 //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 // 											eSwitchBase
 
@@ -870,14 +987,6 @@ double eInductor::GetCurrent()
 eSwitchBase::~eSwitchBase()
 {
 	m_switches.clear();
-}
-
-
-void eSwitchBase::InitMatrix(CircuitMtx& mtx)
-{
-	size_t CountPins = m_switches.size() * 2;
-	size_t numNodes = mtx.GetNumNodes();
-	mtx.Resize(numNodes + CountPins);
 }
 
 
@@ -901,6 +1010,7 @@ eButton::eButton(NormalState_e NormState)
 	SetupSwitches();
 }
 
+
 void eButton::SetupSwitches()
 {
 	m_switches.push_back(eResistor(m_OnResistance));
@@ -913,9 +1023,9 @@ void eButton::SetState(int state)
 	m_State = ButtonState_e(state);
 
 	if (m_NormState == NormalOpen)
-		m_switches[0].SetResistance((state == ButtonState_e::Pressed) ? m_OffResistance : m_OnResistance);
-	else
 		m_switches[0].SetResistance((state == ButtonState_e::Pressed) ? m_OnResistance : m_OffResistance);
+	else
+		m_switches[0].SetResistance((state == ButtonState_e::Pressed) ? m_OffResistance : m_OnResistance);
 }
 
 

@@ -42,6 +42,7 @@ public:
 
 	void									Reset									();
 	eNode*									CreateNode								();
+	void									RemoveNode								(eNode* node);
 	eVoltageSource*							AddVoltageSource						(double voltage);
 	eResistor*								AddResistor								(double resistance);
 	void									RemoveElement							(eElement* element);
@@ -49,10 +50,9 @@ public:
 	void									AssembleMatrix							();
 	eNode*									LookupGroundNode						();
 	void									AdjustVoltages							(eNode* ToDesiredGround);
-	size_t									GetNodeMtxIndex							(eNode* node);
+	u64										GetNodeMtxIndex							(eNode* node);
 	void									Solve									();
 	void									FinalizeMatrixSize						();
-
 
 
 	using NodeIndexTy = int;
@@ -64,12 +64,12 @@ public:
 	ResultsType								Simulate(double totalTime, double dt);
 	
 	void									Test1();
-	void									Test2();
 	void									Test3();
 	ResultsType								Test4(double totalTime = 0.25);
 	ResultsType								Test5(double totalTime = 0.25);
 	ResultsType								Test6(double totalTime = 0.5);
-
+	ResultsType								Test7(double totalTime = 0.5);
+	ResultsType								Test8(double totalTime = 0.5);
 
 };
 
@@ -84,5 +84,4 @@ class Simulation
 
 	void RunCircuit();
 	void SolveCircuit();
-	void SolveMatrix();
 };

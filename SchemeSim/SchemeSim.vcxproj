@@ -69,9 +69,12 @@
       <SDLCheck>true</SDLCheck>
       <PreprocessorDefinitions>NDEBUG;_CONSOLE;%(PreprocessorDefinitions)</PreprocessorDefinitions>
       <ConformanceMode>true</ConformanceMode>
-      <AdditionalIncludeDirectories>$(ProjectDir);$(ProjectDir)vendor;$(ProjectDir)src;$(ProjectDir)vendor\Eigen;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <AdditionalIncludeDirectories>$(ProjectDir);$(ProjectDir)vendor\ImGui;$(ProjectDir)vendor;$(ProjectDir)src;$(ProjectDir)vendor\Eigen;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
       <LanguageStandard>stdcpp23</LanguageStandard>
       <ForcedIncludeFiles>common/types.h;%(ForcedIncludeFiles)</ForcedIncludeFiles>
+      <InlineFunctionExpansion>AnySuitable</InlineFunctionExpansion>
+      <FavorSizeOrSpeed>Speed</FavorSizeOrSpeed>
+      <ExceptionHandling>false</ExceptionHandling>
     </ClCompile>
     <Link>
       <SubSystem>Windows</SubSystem>
@@ -91,6 +94,12 @@
     <ClCompile Include="main.cpp" />
     <ClCompile Include="src\core\SFMLRenderer.cpp" />
     <ClCompile Include="src\frontend\Widgets\WidgetsBase.cpp" />
+    <ClCompile Include="vendor\ImGui\imgui-SFML.cpp" />
+    <ClCompile Include="vendor\ImGui\imgui.cpp" />
+    <ClCompile Include="vendor\ImGui\imgui_demo.cpp" />
+    <ClCompile Include="vendor\ImGui\imgui_draw.cpp" />
+    <ClCompile Include="vendor\ImGui\imgui_tables.cpp" />
+    <ClCompile Include="vendor\ImGui\imgui_widgets.cpp" />
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="src\core\Timer.h" />
@@ -458,16 +467,29 @@
     <ClInclude Include="vendor\Eigen\src\ThreadPool\ThreadYield.h" />
     <ClInclude Include="vendor\Eigen\src\UmfPackSupport\InternalHeaderCheck.h" />
     <ClInclude Include="vendor\Eigen\src\UmfPackSupport\UmfPackSupport.h" />
+    <ClInclude Include="vendor\ImGui\imconfig-SFML.h" />
+    <ClInclude Include="vendor\ImGui\imconfig.h" />
+    <ClInclude Include="vendor\ImGui\imgui-SFML.h" />
+    <ClInclude Include="vendor\ImGui\imgui-SFML_export.h" />
+    <ClInclude Include="vendor\ImGui\imgui.h" />
+    <ClInclude Include="vendor\ImGui\imgui_internal.h" />
+    <ClInclude Include="vendor\ImGui\imstb_rectpack.h" />
+    <ClInclude Include="vendor\ImGui\imstb_textedit.h" />
+    <ClInclude Include="vendor\ImGui\imstb_truetype.h" />
+    <ClInclude Include="src\core\SFMLRenderer.h" />
+    <ClInclude Include="src\frontend\Widgets\WidgetsBase.h" />
     <ClInclude Include="vendor\SFML\Audio.hpp" />
-    <ClInclude Include="vendor\SFML\Audio\AlResource.hpp" />
+    <ClInclude Include="vendor\SFML\Audio\AudioResource.hpp" />
     <ClInclude Include="vendor\SFML\Audio\Export.hpp" />
     <ClInclude Include="vendor\SFML\Audio\InputSoundFile.hpp" />
     <ClInclude Include="vendor\SFML\Audio\Listener.hpp" />
     <ClInclude Include="vendor\SFML\Audio\Music.hpp" />
     <ClInclude Include="vendor\SFML\Audio\OutputSoundFile.hpp" />
+    <ClInclude Include="vendor\SFML\Audio\PlaybackDevice.hpp" />
     <ClInclude Include="vendor\SFML\Audio\Sound.hpp" />
     <ClInclude Include="vendor\SFML\Audio\SoundBuffer.hpp" />
     <ClInclude Include="vendor\SFML\Audio\SoundBufferRecorder.hpp" />
+    <ClInclude Include="vendor\SFML\Audio\SoundChannel.hpp" />
     <ClInclude Include="vendor\SFML\Audio\SoundFileFactory.hpp" />
     <ClInclude Include="vendor\SFML\Audio\SoundFileReader.hpp" />
     <ClInclude Include="vendor\SFML\Audio\SoundFileWriter.hpp" />
@@ -481,6 +503,7 @@
     <ClInclude Include="vendor\SFML\Graphics\CircleShape.hpp" />
     <ClInclude Include="vendor\SFML\Graphics\Color.hpp" />
     <ClInclude Include="vendor\SFML\Graphics\ConvexShape.hpp" />
+    <ClInclude Include="vendor\SFML\Graphics\CoordinateType.hpp" />
     <ClInclude Include="vendor\SFML\Graphics\Drawable.hpp" />
     <ClInclude Include="vendor\SFML\Graphics\Export.hpp" />
     <ClInclude Include="vendor\SFML\Graphics\Font.hpp" />
@@ -497,6 +520,7 @@
     <ClInclude Include="vendor\SFML\Graphics\Shader.hpp" />
     <ClInclude Include="vendor\SFML\Graphics\Shape.hpp" />
     <ClInclude Include="vendor\SFML\Graphics\Sprite.hpp" />
+    <ClInclude Include="vendor\SFML\Graphics\StencilMode.hpp" />
     <ClInclude Include="vendor\SFML\Graphics\Text.hpp" />
     <ClInclude Include="vendor\SFML\Graphics\Texture.hpp" />
     <ClInclude Include="vendor\SFML\Graphics\Transform.hpp" />
@@ -520,21 +544,18 @@
     <ClInclude Include="vendor\SFML\Network\UdpSocket.hpp" />
     <ClInclude Include="vendor\SFML\OpenGL.hpp" />
     <ClInclude Include="vendor\SFML\System.hpp" />
+    <ClInclude Include="vendor\SFML\System\Angle.hpp" />
     <ClInclude Include="vendor\SFML\System\Clock.hpp" />
     <ClInclude Include="vendor\SFML\System\Err.hpp" />
+    <ClInclude Include="vendor\SFML\System\Exception.hpp" />
     <ClInclude Include="vendor\SFML\System\Export.hpp" />
     <ClInclude Include="vendor\SFML\System\FileInputStream.hpp" />
     <ClInclude Include="vendor\SFML\System\InputStream.hpp" />
-    <ClInclude Include="vendor\SFML\System\Lock.hpp" />
     <ClInclude Include="vendor\SFML\System\MemoryInputStream.hpp" />
-    <ClInclude Include="vendor\SFML\System\Mutex.hpp" />
     <ClInclude Include="vendor\SFML\System\NativeActivity.hpp" />
-    <ClInclude Include="vendor\SFML\System\NonCopyable.hpp" />
     <ClInclude Include="vendor\SFML\System\Sleep.hpp" />
     <ClInclude Include="vendor\SFML\System\String.hpp" />
-    <ClInclude Include="vendor\SFML\System\Thread.hpp" />
-    <ClInclude Include="vendor\SFML\System\ThreadLocal.hpp" />
-    <ClInclude Include="vendor\SFML\System\ThreadLocalPtr.hpp" />
+    <ClInclude Include="vendor\SFML\System\SuspendAwareClock.hpp" />
     <ClInclude Include="vendor\SFML\System\Time.hpp" />
     <ClInclude Include="vendor\SFML\System\Utf.hpp" />
     <ClInclude Include="vendor\SFML\System\Vector2.hpp" />
@@ -556,23 +577,11 @@
     <ClInclude Include="vendor\SFML\Window\Vulkan.hpp" />
     <ClInclude Include="vendor\SFML\Window\Window.hpp" />
     <ClInclude Include="vendor\SFML\Window\WindowBase.hpp" />
+    <ClInclude Include="vendor\SFML\Window\WindowEnums.hpp" />
     <ClInclude Include="vendor\SFML\Window\WindowHandle.hpp" />
-    <ClInclude Include="vendor\SFML\Window\WindowStyle.hpp" />
-    <ClInclude Include="src\core\SFMLRenderer.h" />
-    <ClInclude Include="src\frontend\Widgets\WidgetsBase.h" />
   </ItemGroup>
   <ItemGroup>
     <None Include="openal32.dll" />
-    <None Include="sfml-audio-2.dll" />
-    <None Include="sfml-audio-d-2.dll" />
-    <None Include="sfml-graphics-2.dll" />
-    <None Include="sfml-graphics-d-2.dll" />
-    <None Include="sfml-network-2.dll" />
-    <None Include="sfml-network-d-2.dll" />
-    <None Include="sfml-system-2.dll" />
-    <None Include="sfml-system-d-2.dll" />
-    <None Include="sfml-window-2.dll" />
-    <None Include="sfml-window-d-2.dll" />
     <None Include="vendor\Eigen\AccelerateSupport" />
     <None Include="vendor\Eigen\Cholesky" />
     <None Include="vendor\Eigen\CholmodSupport" />
@@ -618,14 +627,18 @@
     <None Include="vendor\Eigen\ThreadPool" />
     <None Include="vendor\Eigen\UmfPackSupport" />
     <None Include="vendor\SFML\Audio\SoundFileFactory.inl" />
+    <None Include="vendor\SFML\Graphics\Color.inl" />
     <None Include="vendor\SFML\Graphics\Glsl.inl" />
     <None Include="vendor\SFML\Graphics\Rect.inl" />
+    <None Include="vendor\SFML\Graphics\Transform.inl" />
+    <None Include="vendor\SFML\System\Angle.inl" />
     <None Include="vendor\SFML\System\String.inl" />
-    <None Include="vendor\SFML\System\Thread.inl" />
-    <None Include="vendor\SFML\System\ThreadLocalPtr.inl" />
+    <None Include="vendor\SFML\System\Time.inl" />
     <None Include="vendor\SFML\System\Utf.inl" />
     <None Include="vendor\SFML\System\Vector2.inl" />
     <None Include="vendor\SFML\System\Vector3.inl" />
+    <None Include="vendor\SFML\Window\Event.inl" />
+    <None Include="vendor\SFML\Window\WindowBase.inl" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
   <ImportGroup Label="ExtensionTargets">

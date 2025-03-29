@@ -7,14 +7,10 @@ Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "Scheme", "SchemeSim\SchemeS
 EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
-		Debug|x64 = Debug|x64
-		Debug|x86 = Debug|x86
 		Release|x64 = Release|x64
 		Release|x86 = Release|x86
 	EndGlobalSection
 	GlobalSection(ProjectConfigurationPlatforms) = postSolution
-		{7536EFF9-7375-4984-BF75-5A781548CB1D}.Debug|x64.ActiveCfg = Release|x64
-		{7536EFF9-7375-4984-BF75-5A781548CB1D}.Debug|x86.ActiveCfg = Release|Win32
 		{7536EFF9-7375-4984-BF75-5A781548CB1D}.Release|x64.ActiveCfg = Release|x64
 		{7536EFF9-7375-4984-BF75-5A781548CB1D}.Release|x64.Build.0 = Release|x64
 		{7536EFF9-7375-4984-BF75-5A781548CB1D}.Release|x86.ActiveCfg = Release|Win32

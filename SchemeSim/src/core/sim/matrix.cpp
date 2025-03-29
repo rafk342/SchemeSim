@@ -61,7 +61,7 @@ void CircuitMtx::Resize(u64 NewSize)
 
 void CircuitMtx::Print(std::ostream& os) const
 {
-	os << std::format("Matrix A ({}x{}) | Vector x | Vector b\n", A.rows(), A.cols());
+	os << std::format("Mtx ({}x{}) | Vector x | Vector b\n", A.rows(), A.cols());
 	os << "------------------------------------------\n";
 	for (int i = 0; i < A.rows(); i++)
 	{

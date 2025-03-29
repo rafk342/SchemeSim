@@ -2,6 +2,7 @@
 #include "WidgetsBase.h"
 
 WidgetBase::WidgetBase(const std::string& path)
+	: m_sprite(m_texture)
 {
     loadImageFromFile(path);
 }

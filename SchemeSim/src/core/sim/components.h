@@ -28,20 +28,20 @@ class eNode
 	double m_TotalCurr = 0.0;
 	double m_Voltage = 0.0;
 
-	size_t m_NodeIndex;
+	u64 m_NodeIndex;
 
 public:
 
-	eNode(size_t index);
+	eNode(u64 index);
 	~eNode();
 
 	void	AddEpin(ePin* epin);
 	void	RemoveEpin(ePin* epin);
 	double	GetVoltage() const { return m_Voltage; }
 	void	SetVoltage(double Volt) { m_Voltage = IsAlmostEqual(Volt, 0.0) ? 0.0 : Volt; }
-	size_t	GetIndex() const { return m_NodeIndex; }
-	size_t	GetNumConnectedPins() const { return m_ePins.size(); }
-	void    SetIndex(size_t index) { m_NodeIndex = index; }
+	u64		GetIndex() const { return m_NodeIndex; }
+	u64		GetNumConnectedPins() const { return m_ePins.size(); }
+	void    SetIndex(u64 index) { m_NodeIndex = index; }
 };
 
 
@@ -78,6 +78,7 @@ enum ElementType_e : u8
 	ty_Potentiometer,
 	ty_Button,
 	ty_Contact,
+	ty_Transformer,
 	ty_Unknown
 };
 
@@ -98,9 +99,9 @@ public:
 
 	virtual void Stamp(CircuitMtx& mtx, eNode* GndNode, double dt) { }
 	virtual void Update(CircuitMtx& mtx, double dt) { }					// Called after matrix was solved
-	virtual void InitMatrix(CircuitMtx& mtx) { }						// Called before matrix will be assembled
+	virtual void InitMatrix(CircuitMtx& mtx) { }						// Called before matrix is assembled
 	virtual ePin* GetEpin(int num);
-	virtual size_t GetNumEpins()		{ return m_ePins.size(); }
+	virtual u64 GetNumEpins()			{ return m_ePins.size(); }
 	virtual ElementType_e GetType()		{ return ty_Unknown; }
 	
 	const char* GetTypeName();
@@ -135,7 +136,7 @@ class ePotentiometer : public eElement
 	eResistor m_R2;
 	double m_TotalResistance;
 	double m_SliderPosition; // 0.0 - 1.0
-	eNode* m_MiddleNode; // This is here for the case when we didn't connect output pin to any node
+	eNode* m_MiddleNode; // This node here is for the case where the output pin is not connected to any node
 
 public:
 
@@ -144,15 +145,16 @@ public:
 	virtual void Stamp(CircuitMtx& mtx, eNode* GndNode, double dt) override;
 	virtual ePin* GetEpin(int num) override;
 	virtual ElementType_e GetType() override { return ty_Potentiometer; }
+	virtual u64 GetNumEpins() override { return 3; }
 
 	void SetSliderPosition(double position);
 	double GetSliderPosition() const;
 	double GetTotalResistance() const;
 	void SetTotalResistance(double resistance);
 
-	ePin* GetLeftPin()				{ return m_R1.GetEpin(0); }
-	ePin* GetRightPin()				{ return m_R2.GetEpin(1); }
-	eNode* GetOutputNode()			{ return m_MiddleNode; }
+	ePin* GetLeftPin();
+	ePin* GetRightPin();
+	eNode* GetOutputNode();
 	
 	void ConnectOutputPinToNode(eNode* node);
 	void ReleaseNodeFromOutputPin();
@@ -167,7 +169,7 @@ class eVoltageSource : public eElement
 	double m_Phase;			// (0 for DC)
 	double m_Time;
 
-	size_t m_eqIndex = 0;
+	u64 m_eqIndex = 0;
 
 public:
 
@@ -185,8 +187,6 @@ public:
 };
 
 
-
-
 class eCapacitor : public eElement
 {
 	double m_Capacitance;			// C, F
@@ -200,7 +200,6 @@ public:
 	virtual ElementType_e GetType() override { return ty_Capacitor; }
 
 };
-
 
 
 
@@ -238,14 +237,14 @@ class eDiode : public eElement
 {
 	// https://github.com/sharpie7/circuitjs1/blob/master/src/com/lushprojects/circuitjs1/client/Diode.java
 
-	double m_Vt;		// Thermal voltage (~0.025V at room temp)
+	double m_Vt;		// Thermal voltage (~0.025V at 27 C (300.15 K))
 	double m_Is;		// Saturation current (should be really small value)
 	double m_ZVoltage;	// Zener breakdown voltage (0 if not used)
 	double m_ZOffset;	// Offset for Zener breakdown exponential
 	double m_Vcrit;		// Critical voltage for limiting exponential growth
 	double m_Vzcrit;	// Critical voltage for Zener breakdown limiting
-	double m_Vscale;	// Voltage scale (same as Vt in most cases)
-	double m_Vdcoef;	// 1 / Vscale for speed
+	double m_Vscale;	// "scale voltage" - the voltage increase which will raise current by a factor of e.
+	double m_Vdcoef;	// 1 / Vscale
 	double m_Vzcoef;	// 1 / Vt for Zener breakdown
 	double m_LastVd;	// Last voltage drop for convergence checks
 	double m_G;			// Equivalent conductance
@@ -257,7 +256,7 @@ class eDiode : public eElement
 
 public:
 
-	eDiode(double Vt = 0.025, double Is = 1e-12, double ZVoltage = 0);
+	eDiode(double Vt = 0.025865, double Is = 1e-12, double ZVoltage = 0);
 	
 	virtual void Stamp(CircuitMtx& mtx, eNode* GndNode, double dt) override;
 	virtual void Update(CircuitMtx& mtx, double dt) override;
@@ -286,7 +285,7 @@ class eInductor : public eElement
 	double m_Inductance;			// L, H
 	double m_prevCurrent = 0.0;
 
-	size_t m_CurrenIndex = 0;
+	u64 m_CurrenIndex = 0;
 
 public:
 
@@ -304,6 +303,34 @@ public:
 
 };
 
+class eTransformer : public eElement
+{
+	double m_L1;
+	double m_L2;
+	double m_CouplCoef;
+	double m_I1 = 0.0;
+	double m_I2 = 0.0;
+	int m_L2Sign = 1;
+
+	u64 m_I1_Idx = -1;
+	u64 m_I2_Idx = -1;
+
+public:
+
+	eTransformer(double Inductance1, double ratio);
+	eTransformer(double Inductance1, double Inductance2, double transformCoef);
+	virtual void InitMatrix(CircuitMtx& mtx) override;
+	virtual void Stamp(CircuitMtx& mtx, eNode* GndNode, double dt) override;
+	virtual void Update(CircuitMtx& mtx, double dt) override;
+
+	virtual ElementType_e GetType() override { return ty_Transformer; }
+	virtual u64 GetNumEpins() override { return 4; }
+
+	ePin* GetPrimaryPin1() { return &m_ePins[0]; }
+	ePin* GetPrimaryPin2() { return &m_ePins[1]; }
+	ePin* GetSecondaryPin1() { return &m_ePins[3]; }
+	ePin* GetSecondaryPin2() { return &m_ePins[2]; }
+};
 
 
 class eSwitchBase : public eElement
@@ -312,11 +339,12 @@ public:
 	enum NormalState_e : u8
 	{
 		NormalOpen,
-		NormalClosed
+		NormalClosed,
 	};
+
 protected:
 
-	std::vector<eResistor> m_switches; // the easiest way to impl switches
+	std::vector<eResistor> m_switches;
 	double m_OnResistance = 1e-3;
 	double m_OffResistance = 1e9;
 	NormalState_e m_NormState = NormalOpen;
@@ -328,8 +356,6 @@ public:
 
 	virtual void SetupSwitches() = 0;
 	virtual void SetState(int state) = 0; // !! int should be enum from derived class, same with GetEpin(n)
-
-	virtual void InitMatrix(CircuitMtx& mtx) override;
 	virtual void Stamp(CircuitMtx& mtx, eNode* GndNode, double dt) override;
 
 	void SetNormalState(NormalState_e state) { m_NormState = state; }
@@ -355,9 +381,22 @@ public:
 	virtual void SetupSwitches() override;
 	virtual void SetState(int state) override;
 	virtual ePin* GetEpin(int num) override;
-	virtual size_t GetNumEpins() override { return 2; }
+	virtual u64 GetNumEpins() override { return 2; }
 	virtual ElementType_e GetType() override { return ty_Button; }
 
 	void Press() { SetState(Pressed); }
 	void Release() { SetState(Released); }
 };
+
+
+
+
+
+
+
+
+
+
+
+
+
