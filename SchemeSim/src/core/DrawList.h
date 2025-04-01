@@ -9,8 +9,8 @@
 
 class dlDrawList
 {
-    static inline std::vector<std::function<void()>> dlDrawCommands;
-    static inline std::vector<std::function<void()>> dlImguiList;
+    static inline std::vector<std::function<void()>> dlList;
+
 public:
 
     inline static sf::RenderWindow* getWindow()
@@ -20,17 +20,17 @@ public:
 
     inline static void DrawInvoke(const std::function<void()>& cmd)
     {
-        dlDrawCommands.emplace_back(cmd);
+        dlList.emplace_back(cmd);
     }
 
     inline static void Execute()
     {
-        if (dlDrawCommands.empty())
+        if (dlList.empty())
             return;
 
-		for (auto& call : dlDrawCommands)
+		for (auto& call : dlList)
 			call();
     
-        dlDrawCommands.clear();
+        dlList.clear();
     }
 };

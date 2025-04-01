@@ -61,18 +61,32 @@ void CircuitMtx::Resize(u64 NewSize)
 
 void CircuitMtx::Print(std::ostream& os) const
 {
-	os << std::format("Mtx ({}x{}) | Vector x | Vector b\n", A.rows(), A.cols());
-	os << "------------------------------------------\n";
+	char buffer[1024];
+	char buffer2[1024];
+	memset(buffer, 0, sizeof(buffer));
+	memset(buffer2, 0, sizeof(buffer2));
+
+	const int numWidth = 12;
+
+	int totalMatrixWidth = A.cols() * (numWidth + 1);
+	int headerWidth = totalMatrixWidth;
+
+	os << std::format("{:<{}} | {:>{}} | {:>{}}\n", 
+			std::format( "Mtx ({}x{})", A.rows(), A.cols()), headerWidth,
+						 "Vector x", numWidth,
+						 "Vector b", numWidth);
+
+	os << std::string(A.cols() * (numWidth + 1) + numWidth * 2 + 5, '-') << '\n';
+
 	for (int i = 0; i < A.rows(); i++)
 	{
-		std::string row;
 		for (int j = 0; j < A.cols(); j++)
 		{
-			row += std::format("{:<7.3f} ", A(i, j));
+			os << std::format("{:>{}.3f} ", A(i, j), numWidth);
 		}
-
-		row += std::format(" | {:<7.3f}", x(i));
-		row += std::format(" | {:<7.3f}", b(i));
-		os << row << '\n';
+		os << " | " << std::format("{:>{}.3f}", x(i), numWidth);
+		os << " | " << std::format("{:>{}.3f}", b(i), numWidth);
+		os << '\n';
 	}
+
 }

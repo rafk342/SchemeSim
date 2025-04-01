@@ -1,6 +1,7 @@
 #pragma once
 #include <iostream>
 #include <format>
+//#define  EIGEN_DONT_PARALLELIZE
 #include "vendor/Eigen/Dense"
 
 

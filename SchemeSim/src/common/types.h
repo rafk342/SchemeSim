@@ -11,8 +11,6 @@ typedef uint32_t u32;
 typedef uint16_t u16;
 typedef uint8_t	u8;
 
-typedef void* pVoid;
-typedef char* pChar;
-typedef const void* pConstVoid;
-
 typedef float f32;
+typedef double f64;
+typedef long double f128;

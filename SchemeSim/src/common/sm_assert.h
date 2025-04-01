@@ -2,10 +2,10 @@
 #include <iostream>
 #include <format>
 
-#define ASSERT_ENABLED 1
+#define ASSERTS_ENABLED 1
 
 
-#if ASSERT_ENABLED
+#if ASSERTS_ENABLED
 struct source_location
 {
     const char* file_name;

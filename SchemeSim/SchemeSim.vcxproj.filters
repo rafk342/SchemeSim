@@ -1490,6 +1490,9 @@
     <ClInclude Include="vendor\SFML\Window.hpp">
       <Filter>Файлы заголовков</Filter>
     </ClInclude>
+    <ClInclude Include="src\common\vfmt.h">
+      <Filter>Файлы заголовков</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <None Include="vendor\Eigen\src\Core\arch\AltiVec\MatrixVectorProduct.inc">

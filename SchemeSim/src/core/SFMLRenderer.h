@@ -14,7 +14,7 @@ class SFMLRenderer
     sf::Clock       m_Clock;
     float           m_frameTime = 0;
     float           m_fps = 0;
-    sf::Vector2f    delta_mouse;
+    sf::Vector2f    m_DeltaMouse;
     
     SFMLRenderer() = default;
     void HandleEvents();

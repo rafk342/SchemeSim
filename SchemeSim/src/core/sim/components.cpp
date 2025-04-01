@@ -109,7 +109,6 @@ const char* eElement::GetTypeName()
 	case ty_Diode:			return "Diode";
 	case ty_Potentiometer:	return "Potentiometer";
 	case ty_Button:			return "Button";
-	case ty_Contact:		return "Contact";
 	case ty_Transformer:    return "Transformer";
 	default:				return "Unknown";
 	}
@@ -503,7 +502,7 @@ void eCapacitor::Update(CircuitMtx& mtx, double dt)
 // 											Diode
 
 
-#if DIODE_VERSION == 1
+#if DIODE_VER == 1
 
 eDiode::eDiode(double Vt, double Is)
 	: m_Vt(Vt)
@@ -606,7 +605,7 @@ double eDiode::GetVoltDrop()
 }
 
 
-#elif DIODE_VERSION == 2
+#elif DIODE_VER == 2
 
 
 eDiode::eDiode(double Vt, double Is, double ZVoltage)
@@ -720,7 +719,6 @@ void eDiode::SetupCriticalVoltages()
 double eDiode::LimitVoltageStep(double Vnew, double Vold)
 {
 	double arg;
-	double origVnew = Vnew;
 
 	if (Vnew > m_Vcrit && std::abs(Vnew - Vold) > (m_Vscale + m_Vscale))	// Forward bias limiting
 	{
@@ -763,7 +761,7 @@ double eDiode::LimitVoltageStep(double Vnew, double Vold)
 	return Vnew;
 }
 
-#elif DIODE_VERSION == 3
+#elif DIODE_VER == 3
 
 #endif
 
@@ -876,7 +874,7 @@ double eInductor::GetCurrent()
 
 
 eTransformer::eTransformer(double Inductance1, double ratio) 
-	: eTransformer(Inductance1, Inductance1 * std::pow(ratio, 2), 0.95)
+	: eTransformer(Inductance1, Inductance1 * std::pow(ratio, 2), 0.997)
 { }
 
 eTransformer::eTransformer(double Inductance1, double Inductance2, double transformCoef)
@@ -885,11 +883,13 @@ eTransformer::eTransformer(double Inductance1, double Inductance2, double transf
 	, m_CouplCoef(transformCoef)
 	, m_I1(0.0)
 	, m_I2(0.0)
-{
-	//
-	// --0 | 3--
-	// --1 | 2--
-	//
+{   
+ 	// 0 ───┐   ┌─── 2
+	//      ) │ (
+	// 	    ) │ ( 
+	//	    ) │ ( 
+	// 1 ───┘   └─── 3
+
 	SetNumEpins(4);
 
 	m_CouplCoef = std::clamp(m_CouplCoef, 0.0, 1.0);
@@ -934,7 +934,7 @@ void eTransformer::Stamp(CircuitMtx& mtx, eNode* GndNode, double dt)
 
 	double L1 = m_L1;
 	double L2 = m_L2;
-	double M = m_L2Sign * m_CouplCoef * std::sqrt(L1 * L2);
+	double M = m_CouplCoef * std::sqrt(L1 * L2);
 
 
 	if (n1 != GndNode) 

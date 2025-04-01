@@ -59,9 +59,9 @@ SFMLRenderer* SFMLRenderer::Init()
 #if CREATE_WINDOW
 	auto mode = sf::VideoMode({ 1920, 1080 });
 	sf::ContextSettings settings;
-	settings.antiAliasingLevel = 0;
-	settings.majorVersion = 4;
-	settings.minorVersion = 6;
+	settings.antiAliasingLevel = 8;
+	//settings.majorVersion = 4;
+	//settings.minorVersion = 6;
 
 	m_Window = std::make_unique<sf::RenderWindow>(mode, "Wnd", sf::Style::Default, sf::State::Windowed, settings);
 	m_Window->setFramerateLimit(240);
@@ -73,7 +73,7 @@ SFMLRenderer* SFMLRenderer::Init()
 
 	SM_ASSERT(m_font.openFromFile("c:\\Windows\\Fonts\\calibri.ttf"), "::SFMLRenderer() -> Failed to load font");
 
-	SM_ASSERT(ImGui::SFML::Init(*m_Window, false), "ImGui::SFML::Init");
+	SM_ASSERT(ImGui::SFML::Init(*m_Window, false), "ImGui::SFML::Init failed");
 
 	ImGuiIO& io = ImGui::GetIO();
 	io.Fonts->Clear();
@@ -122,12 +122,12 @@ void DrawGraph(const Circuit::ResultsType& results, double totalTime, double max
 		graphs[nodeIndex] = line;
 	}
 
+
 	sf::VertexArray grid(sf::PrimitiveType::Lines);
 	int xGridLines = 10;
 	int yGridLines = 10;
 	float xStep = xMax / xGridLines;
 	float yStep = yMax / yGridLines;
-
 
 
 	sf::Color gridColor(50, 50, 50, 180);
@@ -140,7 +140,7 @@ void DrawGraph(const Circuit::ResultsType& results, double totalTime, double max
 		grid.append(sf::Vertex(sf::Vector2f(x, yOffset + yMax), gridColor));
 
 		float timeValue = (i * totalTime) / xGridLines;
-		drawText(std::format("{:.2f}s", timeValue), x - 10, yOffset + yMax + 5, 12, DivColors);
+		drawText(vfmt("{:.2f}s", timeValue), x - 10, yOffset + yMax + 5, 12, DivColors);
 	}
 
 	for (int i = 0; i <= yGridLines; ++i)
@@ -150,8 +150,9 @@ void DrawGraph(const Circuit::ResultsType& results, double totalTime, double max
 		grid.append(sf::Vertex(sf::Vector2f(xOffset + xMax, y), gridColor));
 
 		float voltageValue = (yGridLines - i) * maxVoltage / yGridLines;
-		drawText(std::format("{:.1f}V", voltageValue), xOffset - 40, y - 6, 12, DivColors);
+		drawText(vfmt("{:.1f}V", voltageValue), xOffset - 40, y - 6, 12, DivColors);
 	}
+
 
 	dlDrawList::getWindow()->draw(grid);
 
@@ -170,7 +171,7 @@ void DrawGraph(const Circuit::ResultsType& results, double totalTime, double max
 			line[i].color = colors[nodeIndex % std::size(colors)];
 		}
 		
-		drawText(std::format("Node {}", nodeIndex), xOffset + xMax + 20, yOffset + lineIdx * 30, 20, colors[nodeIndex % std::size(colors)]);
+		drawText(vfmt("Node {}", nodeIndex), xOffset + xMax + 20, yOffset + lineIdx * 30, 20, colors[nodeIndex % std::size(colors)]);
 		lineIdx++;
 	}
 
@@ -190,7 +191,7 @@ void DrawGrid(const sf::Vector2f& gridSize, const sf::Vector2f& cellSize, const 
 		lines.append(sf::Vertex(sf::Vector2f(x, 0), color));
 		lines.append(sf::Vertex(sf::Vector2f(x, gridSize.y), color));
 		
-		drawText(std::format("{:.2f}", x), x, 0, 12, color);
+		drawText(vfmt("{:.2f}", x), x, 0, 12, color);
 	}
 
 	for (float y = 0; y <= gridSize.y; y += cellSize.y) 
@@ -198,11 +199,12 @@ void DrawGrid(const sf::Vector2f& gridSize, const sf::Vector2f& cellSize, const 
 		lines.append(sf::Vertex(sf::Vector2f(0, y), color));
 		lines.append(sf::Vertex(sf::Vector2f(gridSize.x, y), color));
 
-		drawText(std::format("{:.2f}", y), 0, y, 12, color);
+		drawText(vfmt("{:.2f}", y), 0, y, 12, color);
 	}
 
 	dlDrawList::getWindow()->draw(lines);
 }
+
 
 
 SFMLRenderer* SFMLRenderer::OnRender()
@@ -210,6 +212,8 @@ SFMLRenderer* SFMLRenderer::OnRender()
 	sf::Vector2f PrevMousePos{};
 	sf::Vector2f CurrentMousePos{};
 	Circuit circuit;
+	DrawableCircuit drawableCircuit(circuit);
+	CircuitEditor editor(drawableCircuit);
 
 	Timer timer;
 
@@ -231,6 +235,7 @@ SFMLRenderer* SFMLRenderer::OnRender()
 	timer.Stop();
 
 	std::cout << "Elapsed Time : " << std::format("{:.10f}", timer.GetElapsedSeconds()) << " s\n";
+	CircuitRef circuitRef;
 
 #if CREATE_WINDOW
 
@@ -254,22 +259,12 @@ SFMLRenderer* SFMLRenderer::OnRender()
 		m_Window->clear(sf::Color(200, 200, 200));
 		
 		{
-			static sf::Color gridColor(164, 164, 164, 255);
+			circuitRef.Draw();
+			editor.DrawUI();
 
-			DrawGrid({ 1000.0f,1000.0f }, { 100.0f, 100.0f }, gridColor);
-			DrawGraph(results, Time, 5);
+			DrawGrid({ 1000.0f,1000.0f }, { 100.0f, 100.0f }, sf::Color(164, 164, 164, 255));
 
-			drawText(std::format("FPS : {:.2f}", m_fps), -10, -10, 10);
-			dlDrawList::Execute();
-
-
-			ImGui::Begin("Circuit");
-
-			float col[4] = { gridColor.r / 255.0f, gridColor.g / 255.0f, gridColor.b / 255.0f, gridColor.a / 255.0f };
-			ImGui::ColorEdit4("Grid Color", col);
-			gridColor = sf::Color(col[0] * 255, col[1] * 255, col[2] * 255, col[3] * 255);
-
-			ImGui::End();
+			drawableCircuit.Draw();
 		}
 
 		ImGui::SFML::Render(*m_Window);
@@ -315,7 +310,7 @@ void SFMLRenderer::HandleEvents()
 
 				else if (scrolledEvent->delta < 0)
 					m_view.zoom(1.05f);
-			}
+			}	
 		}
 		ImGui::SFML::ProcessEvent(*m_Window, *event);
 	}
@@ -335,4 +330,3 @@ sf::Vector2f SFMLRenderer::GetWorldMousePos()
 {
 	return m_Window->mapPixelToCoords(sf::Mouse::getPosition(*m_Window), m_view);
 }
-

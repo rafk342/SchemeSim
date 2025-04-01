@@ -7,7 +7,7 @@
 #include <math.h>
 #include "matrix.h"
 
-#define DIODE_VERSION 2
+#define DIODE_VER 2
 
 
 class ePin;
@@ -77,9 +77,8 @@ enum ElementType_e : u8
 	ty_Diode,
 	ty_Potentiometer,
 	ty_Button,
-	ty_Contact,
 	ty_Transformer,
-	ty_Unknown
+	ty_Unknown = 255,
 };
 
 
@@ -100,6 +99,7 @@ public:
 	virtual void Stamp(CircuitMtx& mtx, eNode* GndNode, double dt) { }
 	virtual void Update(CircuitMtx& mtx, double dt) { }					// Called after matrix was solved
 	virtual void InitMatrix(CircuitMtx& mtx) { }						// Called before matrix is assembled
+	virtual void Reset() { }
 	virtual ePin* GetEpin(int num);
 	virtual u64 GetNumEpins()			{ return m_ePins.size(); }
 	virtual ElementType_e GetType()		{ return ty_Unknown; }
@@ -180,6 +180,7 @@ public:
 	virtual void Update(CircuitMtx& mtx, double dt) override;
 	virtual void InitMatrix(CircuitMtx& mtx) override;
 	virtual ElementType_e GetType() override { return ty_VoltageSource; }
+	virtual void Reset() override { m_Time = 0.0; }
 
 	ePin* GetPositivePin() { return &m_ePins[0]; }
 	ePin* GetNegativePin() { return &m_ePins[1]; }
@@ -198,12 +199,13 @@ public:
 	virtual void Stamp(CircuitMtx& mtx, eNode* GndNode, double dt) override;
 	virtual void Update(CircuitMtx& mtx, double dt) override;
 	virtual ElementType_e GetType() override { return ty_Capacitor; }
+	virtual void Reset() override { m_PrevVoltage = 0.0; }
 
 };
 
 
 
-#if DIODE_VERSION == 1
+#if DIODE_VER == 1
 
 class eDiode : public eElement
 {
@@ -230,7 +232,7 @@ public:
 };
 
 
-#elif DIODE_VERSION == 2
+#elif DIODE_VER == 2
 
 
 class eDiode : public eElement
@@ -265,10 +267,12 @@ public:
 	double GetVoltDrop();
 	ePin* GetAnodePin() { return &m_ePins[0]; }
 	ePin* GetCathodePin() { return &m_ePins[1]; }
+
+	virtual void Reset() override { m_LastVd = 0.0; }
 };
 
 
-#elif DIODE_VERSION == 3
+#elif DIODE_VER == 3
 
 class eDiode : public eElement
 {
@@ -276,7 +280,7 @@ class eDiode : public eElement
 };
 
 
-#endif // DIODE_VERSION
+#endif // DIODE_VER
 
 
 
@@ -301,6 +305,8 @@ public:
 	double GetCurrent();
 	double GetVoltDrop();
 
+	virtual void Reset() override { m_prevCurrent = 0.0; }
+
 };
 
 class eTransformer : public eElement
@@ -310,7 +316,6 @@ class eTransformer : public eElement
 	double m_CouplCoef;
 	double m_I1 = 0.0;
 	double m_I2 = 0.0;
-	int m_L2Sign = 1;
 
 	u64 m_I1_Idx = -1;
 	u64 m_I2_Idx = -1;
@@ -328,8 +333,10 @@ public:
 
 	ePin* GetPrimaryPin1() { return &m_ePins[0]; }
 	ePin* GetPrimaryPin2() { return &m_ePins[1]; }
-	ePin* GetSecondaryPin1() { return &m_ePins[3]; }
-	ePin* GetSecondaryPin2() { return &m_ePins[2]; }
+	ePin* GetSecondaryPin1() { return &m_ePins[2]; }
+	ePin* GetSecondaryPin2() { return &m_ePins[3]; }
+
+	virtual void Reset() override { m_I1 = 0.0; m_I2 = 0.0; }
 };
 
 

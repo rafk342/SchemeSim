@@ -24,5 +24,7 @@ public:
     sf::Texture&    GetTexture();
     sf::Sprite&     GetSprite();
    
-    void SetPosition(const sf::Vector2f& pos);
+    void SetPosition(sf::Vector2f pos);
+    void SetColor(sf::Color color);
+	sf::Vector2f GetPosition() { return m_sprite.getPosition(); }
 };

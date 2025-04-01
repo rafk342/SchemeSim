@@ -102,6 +102,7 @@
     <ClCompile Include="vendor\ImGui\imgui_widgets.cpp" />
   </ItemGroup>
   <ItemGroup>
+    <ClInclude Include="src\common\vfmt.h" />
     <ClInclude Include="src\core\Timer.h" />
     <ClInclude Include="src\common\types.h" />
     <ClInclude Include="src\helpers\Helpers.h" />
