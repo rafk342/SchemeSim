@@ -70,29 +70,21 @@ SFMLRenderer* SFMLRenderer::Init()
 	m_view.setCenter(sf::Vector2f(m_Window->getSize()) / 2.0f);
 	m_view.zoom(1.65);
 	m_Window->setView(m_view);
+	std::cout << std::filesystem::current_path() << std::endl;
 
-	SM_ASSERT(m_font.openFromFile("c:\\Windows\\Fonts\\calibri.ttf"), "::SFMLRenderer() -> Failed to load font");
+	SM_ASSERT(m_font.openFromFile("assets\\calibri.ttf"), "::SFMLRenderer() -> Failed to load font");
 
 	SM_ASSERT(ImGui::SFML::Init(*m_Window, false), "ImGui::SFML::Init failed");
 
 	ImGuiIO& io = ImGui::GetIO();
 	io.Fonts->Clear();
-	io.Fonts->AddFontFromFileTTF("c:\\Windows\\Fonts\\calibri.ttf", 16.0f);
+	io.Fonts->AddFontFromFileTTF("assets\\calibri.ttf", 16.0f);
 	ImGui::SFML::UpdateFontTexture();
 
 #endif
 	return this;
 }
 
-
-void drawText(const auto& text, float x, float y, int charSize, sf::Color color = sf::Color::Black)
-{
-	sf::Text t(g_SFMLRenderer.GetFont(), text, charSize);
-	t.setFillColor(color);
-	t.setPosition({ x, y });
-	t.setString(text);
-	dlDrawList::getWindow()->draw(t);
-};
 
 
 void DrawGraph(const Circuit::ResultsType& results, double totalTime, double maxVoltage)

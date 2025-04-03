@@ -676,14 +676,45 @@ void Wire::Draw()
 	for (size_t i = 0; i < m_Segments.size(); i++)
 	{
 		auto& segment = m_Segments[i];
-		DrawThickLine(segment.vStart, segment.vEnd, m_WireThickness, m_WireColor);
+		DrawThickLine(segment.vStart, segment.vEnd, WireThickness, m_WireColor);
 		
-		if (i == 0 && m_DrawStartDot)
-			DrawCircle(segment.vStart, m_WireThickness * 1.3f, sf::Color::Black);
+		//if (i == 0 && m_DrawStartDot)
+		//	DrawCircle(segment.vStart, WireThickness * 1.3f, sf::Color::Black);
 
-		if (i == m_Segments.size() - 1 && m_DrawEndDot)
-			DrawCircle(segment.vEnd, m_WireThickness * 1.3f, sf::Color::Black);
+		//if (i == m_Segments.size() - 1 && m_DrawEndDot)
+		//	DrawCircle(segment.vEnd, WireThickness * 1.3f, sf::Color::Black);
 	}
+}
+
+std::shared_ptr<Wire> Wire::SplitSelf(u64 SegmentIndex, sf::Vector2f SplitPoint)
+{
+	if (SegmentIndex >= m_Segments.size())
+		return nullptr;
+
+	std::shared_ptr<Wire> newWirePtr = std::make_shared<Wire>();
+	Wire& left = *this;
+	Wire& right = *newWirePtr.get();
+
+	Segment& SegmentToSplit = left.m_Segments[SegmentIndex];
+	sf::Vector2f SegmentPosStart = SegmentToSplit.vStart;
+	sf::Vector2f SegmentPosEnd = SegmentToSplit.vEnd;
+
+	left.m_Segments.erase(left.m_Segments.begin() + SegmentIndex);
+	left.m_Segments.insert(m_Segments.begin() + SegmentIndex, { { SegmentPosStart, SplitPoint }, { SplitPoint, SegmentPosEnd }, });
+
+	right.m_Segments = std::deque<Segment>(left.m_Segments.begin() + SegmentIndex + 1, left.m_Segments.end());
+	left.m_Segments.erase(left.m_Segments.begin() + SegmentIndex + 1, left.m_Segments.end());
+
+
+	right.m_ConnectionTypeAtEnd = left.m_ConnectionTypeAtEnd;
+	right.m_DataAtEnd = left.m_DataAtEnd;
+
+	right.m_ConnectionTypeAtStart = ToNothing;
+	right.m_DataAtStart = DataToNothing{};
+	left.m_ConnectionTypeAtEnd = ToNothing;
+	left.m_DataAtEnd = DataToNothing{};
+
+	return newWirePtr;
 }
 
 
@@ -719,6 +750,11 @@ void DrawableCircuit::Draw()
 	for (auto& wire : m_AllWires)
 	{
 		wire->Draw();
+	}
+
+	for (auto& dot : m_WiresConnectionDots)
+	{
+		dot->Draw();
 	}
 }
 
@@ -766,6 +802,41 @@ void DrawableCircuit::RemoveElement(eDrawableBase* element)
 	m_DrawableElements.erase(it);
 	m_Circuit->RemoveElement(m_DrawableToElement.at(element));
 	m_DrawableToElement.erase(element);
+}
+
+
+std::pair<std::weak_ptr<Wire>, std::weak_ptr<Wire>> DrawableCircuit::SplitWire(std::shared_ptr<Wire> wire, u64 SegmentIndex, sf::Vector2f SplitPoint)
+{
+	if (!wire)
+	{
+		SM_ASSERT(false, "DrawableCircuit::SplitWire() -> wire==nullptr");
+		return {};
+	}
+
+	eNode* node = LookupNodeByWire(wire.get());
+	auto WireIt = std::ranges::find(m_AllWires, wire);
+	SM_ASSERT(WireIt != m_AllWires.end(), "DrawableCircuit::SplitWire() -> wire was not found in m_AllWires");
+
+
+	std::shared_ptr newWire = WireIt->get()->SplitSelf(SegmentIndex, SplitPoint);
+	SM_ASSERT(newWire.get(), "DrawableCircuit::SplitWire() -> newWire == nullptr");
+
+
+	m_AllWires.insert(WireIt, newWire);
+
+	if (node)
+	{
+		m_WireGroups[node].CleanUpFromExiredWires();
+		m_WireGroups[node].insert(newWire);
+	}
+
+	return { wire, newWire };
+}
+
+
+std::shared_ptr<WiresConnectionDot> DrawableCircuit::CreateWiresConnectionDot(sf::Vector2f pos)
+{
+	return m_WiresConnectionDots.emplace_back(std::make_shared<WiresConnectionDot>(pos));
 }
 
 
@@ -855,15 +926,14 @@ sf::Vector2f CircuitEditor::GetClosestPointOnSegment(sf::Vector2f point, sf::Vec
 }
 
 
-CircuitEditor::ClosestWirePointInfo CircuitEditor::FindClosestPointToWire(Wire& wire, sf::Vector2f mousePos, float maxDistance)
+std::optional<CircuitEditor::ClosestWirePointInfo> CircuitEditor::FindClosestPointToWire(Wire& wire, sf::Vector2f mousePos, float maxDistance)
 {
 	auto& segments = *wire.GetSegments();
 
 	if (segments.empty())
-		return {};
+		return std::nullopt;
 
-	auto [minIt, maxIt] = std::minmax_element(segments.begin(), segments.end(),
-		[&](const Wire::Segment& a, const Wire::Segment& b)
+	auto minIt = std::ranges::min_element(segments, [&](const Wire::Segment& a, const Wire::Segment& b)
 		{
 			sf::Vector2f pointA = GetClosestPointOnSegment(mousePos, a.vStart, a.vEnd);
 			sf::Vector2f pointB = GetClosestPointOnSegment(mousePos, b.vStart, b.vEnd);
@@ -874,34 +944,149 @@ CircuitEditor::ClosestWirePointInfo CircuitEditor::FindClosestPointToWire(Wire& 
 
 	sf::Vector2f closestPoint = GetClosestPointOnSegment(mousePos, minIt->vStart, minIt->vEnd);
 	float minDistance = (mousePos - closestPoint).length();
+	u64 index = std::distance(segments.begin(), minIt);
 
-	ClosestWirePointInfo result{};
 	if (minDistance <= maxDistance)
 	{
-		result.position = closestPoint;
-		result.distance = minDistance;
-		result.valid = true;
+		ClosestWirePointInfo result
+		{
+			.position = closestPoint,
+			.segmentIndex = index,
+			.distance = minDistance,
+		};
+		return result;
 	}
-	return result;
+	else
+	{
+		return std::nullopt;
+	}
 }
 
 
-std::optional<std::weak_ptr<Wire>> CircuitEditor::CheckForConnectionWithOtherWire(const sf::Vector2f& MousePos, sf::Vector2f& end, Wire* selfWire)
+std::optional<std::pair<std::weak_ptr<Wire>, size_t>> CircuitEditor::CheckForConnectionWithOtherWire(const sf::Vector2f& MousePos, sf::Vector2f& OutEnd, std::shared_ptr<Wire> selfWire)
 {
 	for (auto& wire : m_DrawableCircuit->m_AllWires)
 	{
-		if (wire.get() == selfWire)
+		if (wire == selfWire)
 			continue;
 
-		ClosestWirePointInfo info = FindClosestPointToWire(*wire.get(), MousePos);
-		if (info.valid)
+		if (std::optional info = FindClosestPointToWire(*wire, MousePos))
 		{
-			end = info.position;
-			return std::weak_ptr<Wire>(wire);
+			OutEnd = info->position;
+			return std::make_pair( wire, info->segmentIndex );
 		}
 	}
 	return std::nullopt;
 }
+
+
+std::optional<std::weak_ptr<WiresConnectionDot>> CircuitEditor::GetClosestWireConnectionDot(sf::Vector2f& OutPos)
+{
+	for (auto& dot : m_DrawableCircuit->m_WiresConnectionDots)
+	{
+		float dist = (OutPos - dot->GetPosition()).length();
+		if (dist < 20.0f)
+		{
+			OutPos = dot->GetPosition();
+			return dot;
+		}
+	}
+	return std::nullopt;
+}
+
+
+template<Wire::ConnectionPointType myEndTy>
+void CircuitEditor::UpdateConnectionData(std::shared_ptr<Wire> wire, sf::Vector2f & point)
+{
+	if (std::optional pinInfo = GetClosestElementPinInfo(point)) // We are close to some pin
+	{
+		wire->ReleaseConnectionDot<myEndTy>();
+		auto& [pos, pinIndex, elem] = *pinInfo;
+		point = pos;
+		wire->SetConnectionType<myEndTy>(Wire::ConnectionType::ToPin);
+		wire->DataAt<myEndTy>() = Wire::DataToPin{ .element = elem, .pinIndex = pinIndex };
+	}
+	else if (std::optional dotInfo = GetClosestWireConnectionDot(point)) // Snap to existing wire dot
+	{
+		wire->ReleaseConnectionDot<myEndTy>();
+		auto& dot = *dotInfo;
+		wire->SetConnectionType<myEndTy>(Wire::ConnectionType::ToWireDot);
+		wire->DataAt<myEndTy>() = Wire::DataToWireDot{ .dot = dot };
+		dot.lock()->AddWire(wire, myEndTy);
+		wire->SetConnectionDot<myEndTy>(dot);
+	}
+	else if (std::optional otherWireData = CheckForConnectionWithOtherWire(point, point, wire)) // Snap to other wire, split it and create a new connection dot
+	{
+		wire->ReleaseConnectionDot<myEndTy>();
+
+		auto& [OtherWirePtr, segIndex] = *otherWireData;
+		auto [WeakLeft, WeakRight] = m_DrawableCircuit->SplitWire(OtherWirePtr.lock(), segIndex, point);
+
+		auto left = WeakLeft.lock();
+		auto right = WeakRight.lock();
+		if (left && right)
+		{
+			auto NewDot = m_DrawableCircuit->CreateWiresConnectionDot(point);
+
+			left->DataAtEnd() = Wire::DataToWireDot{ .dot = NewDot };
+			left->SetConnectionType<Wire::ConnectionPointType::End>(Wire::ConnectionType::ToWireDot);
+
+			right->DataAtStart() = Wire::DataToWireDot{ .dot = NewDot };
+			right->SetConnectionType<Wire::ConnectionPointType::Start>(Wire::ConnectionType::ToWireDot);
+
+			wire->SetConnectionType<myEndTy>(Wire::ConnectionType::ToWireDot);
+			wire->DataAt<myEndTy>() = Wire::DataToWireDot{ .dot = NewDot };
+
+			NewDot->AddWire(left, Wire::ConnectionPointType::End);
+			NewDot->AddWire(right, Wire::ConnectionPointType::Start);
+			NewDot->AddWire(wire, myEndTy);
+
+			left->SetConnectionDot<Wire::ConnectionPointType::End>(NewDot);
+			right->SetConnectionDot<Wire::ConnectionPointType::Start>(NewDot);
+			wire->SetConnectionDot<myEndTy>(NewDot);
+		}
+	}
+	else // Just wire without any connection at the end
+	{
+		wire->ReleaseConnectionDot<myEndTy>();
+		wire->SetConnectionType<myEndTy>(Wire::ConnectionType::ToNothing);
+		wire->DataAt<myEndTy>() = Wire::DataToNothing{ };
+	}
+};
+
+
+void CircuitEditor::InitWireData(std::shared_ptr<Wire> wire)
+{
+	if (wire->GetSegments()->size() == 0)
+	{
+		wire->ReleaseConnectionDot<Wire::ConnectionPointType::Start>();
+		wire->ReleaseConnectionDot<Wire::ConnectionPointType::End>();
+	}
+	else
+	{
+		UpdateConnectionData<Wire::ConnectionPointType::Start>(wire, wire->GetSegments()->front().vStart);
+		UpdateConnectionData<Wire::ConnectionPointType::End>(wire, wire->GetSegments()->back().vEnd);
+	}
+}
+
+
+void CircuitEditor::CleanupWireDots()
+{
+	for (auto& dot : m_DrawableCircuit->m_WiresConnectionDots)
+	{
+		dot->CleanupExpiredWireRefs();
+	}
+	std::erase_if(m_DrawableCircuit->m_WiresConnectionDots, [](auto& dot) { return dot->GetWiresCount() == 0; });
+}
+
+void CircuitEditor::InitAllWiresData()
+{
+	for (auto& wire : m_DrawableCircuit->m_AllWires) // Reinitalize all wires
+	{
+		InitWireData(wire);
+	}
+}
+
 
 
 void CircuitEditor::DrawUI()
@@ -966,8 +1151,8 @@ void CircuitEditor::DrawUI()
 					if (ImGui::Button(vfmt("Edit## {}", i)))
 					{
 						m_EditableWire = &wire;
-						m_EditableWire->SetDrawEndDot(false);
-						m_EditableWire->SetDrawStartDot(false);
+						//m_EditableWire->SetDrawEndDot(false);
+						//m_EditableWire->SetDrawStartDot(false);
 						m_WireEditOnStart = true;
 					}
 					
@@ -981,8 +1166,11 @@ void CircuitEditor::DrawUI()
 				}
 
 				if (toRemove != wires.end())
+				{
 					m_DrawableCircuit->RemoveWire(toRemove->get());
-
+					CleanupWireDots();
+					InitAllWiresData();
+				}
 				ImGui::EndTable();
 			}
 
@@ -1133,66 +1321,12 @@ void CircuitEditor::HandleWireEditing()
 		if (segments->size() != 0)
 			segments->pop_back();
 		
-		for (auto& wire : m_DrawableCircuit->m_AllWires) // Reinitalize all wires
-		{
-			InitWireData(wire.get());
-		}
+		CleanupWireDots();
+		InitAllWiresData();
 
 		m_EditableWire = nullptr;
 	}
 }
-
-
-void CircuitEditor::InitWireData(Wire* wire)
-{
-	std::vector<Wire::Segment>* segments = wire->GetSegments();
-	if (segments->size() == 0)
-	{
-		wire->SetDrawStartDot(false);
-		wire->SetDrawEndDot(false);
-	}
-	else
-	{
-		auto UpdateConnectionData = [this](auto SetDrawDotFunc, auto SetConnectionTypeFunc, auto GetOptDataFunc, Wire* wire, sf::Vector2f& point)
-			{
-				if (std::optional pinInfo = GetClosestElementPinInfo(point)) // We are close to some pin
-				{
-					auto& [pos, pinIndex, elem] = *pinInfo;
-					point = pos;
-					(wire->*SetDrawDotFunc)(false);
-					(wire->*SetConnectionTypeFunc)(Wire::ConnectionType::ToPin);
-					(wire->*GetOptDataFunc)() = Wire::DataToPin{ .element = elem, .pinIndex = pinIndex };
-				}
-				else if (std::optional OtherWirePtr = CheckForConnectionWithOtherWire(point, point, wire)) // Snap to other wire
-				{
-					(wire->*SetDrawDotFunc)(true);
-					(wire->*SetConnectionTypeFunc)(Wire::ConnectionType::ToWire);
-					(wire->*GetOptDataFunc)() = Wire::DataToWire{ .wire = *OtherWirePtr };
-				}
-				else // Just wire without any connection at the end
-				{
-					(wire->*SetDrawDotFunc)(false);
-					(wire->*SetConnectionTypeFunc)(Wire::ConnectionType::ToNothing);
-					(wire->*GetOptDataFunc)() = Wire::DataToNothing{ };
-				}
-			};
-
-		UpdateConnectionData(
-			&Wire::SetDrawEndDot, 
-			&Wire::SetConnectionTypeAtEnd, 
-			&Wire::DataAtEnd,
-			wire, 
-			segments->back().vEnd);
-
-		UpdateConnectionData(
-			&Wire::SetDrawStartDot,
-			&Wire::SetConnectionTypeAtStart, 
-			&Wire::DataAtStart,
-			wire, 
-			segments->front().vStart);
-	}
-}
-
 
 //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -1204,7 +1338,7 @@ Resistor::Resistor()
 	GetTexture().setSmooth(true);
 	m_PinPositions =
 	{
-		{ 0.0f, 184.0f}, 
+		{ 0.0f, 184.0f }, 
 		{ float(m_sprite.getTextureRect().size.x), 184.0f }
 	};
 }
@@ -1271,3 +1405,13 @@ int Resistor::GetPinIndexFromLocalPosition(sf::Vector2f pos)
 //	void SolveCircuit();
 //};
 //
+
+void WiresConnectionDot::Draw()
+{
+	if (m_ConnectedWires.size() > 2)
+		DrawCircle(m_Position, Wire::WireThickness * 1.3f, sf::Color::Black);
+	else
+		DrawCircle(m_Position, Wire::WireThickness * 1.3f, sf::Color::Red * sf::Color(255, 255, 255, 100));
+	
+	drawText(vfmt("Wires: {}", m_ConnectedWires.size()), m_Position.x, m_Position.y, 30.0f, sf::Color::Black);
+}

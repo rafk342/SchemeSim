@@ -14,7 +14,7 @@ namespace winapi
 struct source_location
 {
     const char* file_name;
-    unsigned line_number;
+    long line_number;
 };
 
 #define CUR_SOURCE_LOCATION source_location({__FILE__, __LINE__})
@@ -25,14 +25,13 @@ namespace _asserts
     {
         if (!expr)
         {
-			std::string msg = std::format("Assertion Failed: {} \nfile : {}\nline : {}\n", description, loc.file_name, loc.line_number);
-			msg += "Stacktrace:\n";
+            std::cout << "Stacktrace:\n";
 
             for (auto& frame : std::stacktrace::current())
             {
-                msg += std::format("\t\t {:<80}| Line: {:<15}| File: {:<15}\n", frame.description(), frame.source_line(), frame.source_file());
+                std::cout << std::format("\t\t {:<80}| Line: {:<15}| File: {:<15}\n", frame.description(), frame.source_line(), frame.source_file());
             }
-            winapi::MessageBoxA(nullptr, msg.c_str(), "Assert", MB_ICONERROR | MB_OK);
+            winapi::MessageBoxA(nullptr, std::format("Assertion Failed: {} \nfile : {}\nline : {}\n", description, loc.file_name, loc.line_number).c_str(), "Assert", MB_ICONERROR | MB_OK);
             __debugbreak();
         }
     }
