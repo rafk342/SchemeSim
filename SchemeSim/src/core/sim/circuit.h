@@ -6,6 +6,7 @@
 #include <ranges>
 #include <fstream>
 #include <unordered_map>
+#include <unordered_set>
 
 #include "components.h"
 #include "imgui.h"
@@ -57,7 +58,8 @@ public:
 	void									AdjustVoltages							(eNode* ToDesiredGround);
 	void									Solve									();
 	void									FinalizeMatrixSize						();
-
+	void									CleanupFromNodes						();
+	eNode*									MergeNodes								(eNode* node1, eNode* node2);
 
 	using NodeIndexTy = int;
 	using TimeTy = double;
@@ -90,17 +92,17 @@ class Wire;
 class eDrawableBase : public WidgetBase
 {
 protected:
-	std::vector<sf::Vector2f> m_EpinPositions;
+	std::vector<sf::Vector2f> m_PinPositions;
 
 public:
 
 	eDrawableBase(const std::string& path) : WidgetBase(path) 
 	{ }
 
-	virtual void					Draw							() = 0;
-	virtual sf::Vector2f			GetEpinPos(int n) = 0; // int can be enum, should be the same as in derived eElement class
-	virtual void					UIParams						(eElement* elem) = 0;
-	std::vector<sf::Vector2f>&		GetLocalPinsPositions			() { return m_EpinPositions; }
+	virtual void					Draw								() = 0;
+	virtual sf::Vector2f			GetEpinPos							(int n) = 0; // int can be enum, should be the same as in derived eElement class
+	virtual void					UIParams							(eElement* elem) = 0;
+	std::vector<sf::Vector2f>&		GetLocalPinsPositions				()							{ return m_PinPositions; }
 	virtual int						GetPinIndexFromLocalPosition		(sf::Vector2f pos) = 0;
 };
 
@@ -113,8 +115,10 @@ public:
 	virtual sf::Vector2f			GetEpinPos(int n) override;
 	virtual void					UIParams(eElement* elem) override;
 	virtual int						GetPinIndexFromLocalPosition(sf::Vector2f pos) override;
-
 };
+
+
+
 
 
 class Wire
@@ -134,7 +138,7 @@ public:
 	enum ConnectionType { ToWire, ToPin, ToNothing };
 	struct DataToPin
 	{
-		eDrawableBase* element;
+		std::weak_ptr<eDrawableBase> element;
 		int pinIndex;
 	};
 	struct DataToWire
@@ -143,10 +147,12 @@ public:
 	};
 	struct DataToNothing
 	{ };
-private:
-	
 	using VariantDataTy = std::variant<DataToPin, DataToWire, DataToNothing>;
 
+private:
+
+	u64							m_Id = -1;
+	//eNode*						m_Node = nullptr;
 	std::vector<Segment>		m_Segments;
 	sf::Color					m_WireColor = sf::Color::Black;
 	bool						m_DrawStartDot = false;
@@ -159,22 +165,43 @@ private:
 
 	void DrawThickLine(sf::Vector2f start, sf::Vector2f end, float thickness, sf::Color color);
 
+	static inline u64 counter = 0;
+	static inline u64 NumInstances = 0;
 public:
-	Wire() = default;
 
+	bool IsHoveredInMainList = false;
+	bool IsHoveredInGroupList = false;
+
+	Wire()	
+	{
+		m_Id = counter++;
+		NumInstances++;
+	}
+	~Wire()
+	{
+		NumInstances--;
+		if (NumInstances == 0)
+			counter = 0;
+	}
+	
+	//void						SetNode(eNode* node) { m_Node = node; }
+	//eNode*						GetNode() const { return m_Node; }
 	void						Draw();
-
 	void						Clear()												{ m_Segments.clear(); }
 	std::vector<Segment>*		GetSegments()										{ return &m_Segments; }
 	void						SetDrawStartDot(bool draw)							{ m_DrawStartDot = draw; }
 	void						SetDrawEndDot(bool draw)							{ m_DrawEndDot = draw; }
 	void						SetColor(sf::Color color)							{ m_WireColor = color; }
-	void						SetConnectionTypeAtStart(ConnectionType type)		{ m_ConnectionTypeAtStart = type; }
-	void						SetConnectionTypeAtEnd(ConnectionType type)			{ m_ConnectionTypeAtEnd = type; }
+	sf::Color					GetColor() const									{ return m_WireColor; }
 	ConnectionType				GetConnectionTypeAtStart()							{ return m_ConnectionTypeAtStart; }
 	ConnectionType				GetConnectionTypeAtEnd()							{ return m_ConnectionTypeAtEnd; }
-	VariantDataTy&				GetDataAtStart()									{ return m_DataAtStart; }
-	VariantDataTy&				GetDataAtEnd()										{ return m_DataAtEnd; }
+	void						SetConnectionTypeAtStart(ConnectionType type)		{ m_ConnectionTypeAtStart = type; }
+	void						SetConnectionTypeAtEnd(ConnectionType type)			{ m_ConnectionTypeAtEnd = type; }
+	VariantDataTy&				DataAtStart()										{ return m_DataAtStart; }
+	VariantDataTy&				DataAtEnd()											{ return m_DataAtEnd; }
+	bool						IsInGroup() const									{ return m_IsInGroup; }
+	void						SetIsInGroup(bool val)								{ m_IsInGroup = val; }
+	u64							GetID() const										{ return m_Id; }
 };
 
 
@@ -182,43 +209,48 @@ public:
 class DrawableCircuit
 {
 	friend class CircuitEditor;
-	using UPtrDrawableBaseTy = std::unique_ptr<eDrawableBase>;
-
 
 	Circuit* m_Circuit = nullptr;
 
-	struct WiresGroup
+	class WiresGroup
 	{
-		eNode* node = nullptr;						// Node that simulates this group
-		std::vector<std::weak_ptr<Wire>> wires;			// Wires in this group
+		std::list<std::weak_ptr<Wire>> wires;			// Wires in this group
+	public:
+
+		bool contains(std::weak_ptr<Wire> wire) const	{ return std::ranges::find_if(wires, [wire](const auto& w) { return w.lock() == wire.lock(); }) != wires.end(); }
+		void insert(std::weak_ptr<Wire> wire)			{ if (!contains(wire)) wires.push_back(wire); } 
+		void CleanUpFromExiredWires()					{ std::erase_if(wires, [](const std::weak_ptr<Wire>& wire) { return wire.expired(); }); } 
+		void clear()									{ wires.clear(); } 
+		auto begin()									{ return wires.begin(); }
+		auto end()										{ return wires.end(); }
+		auto erase(auto it)								{ return wires.erase(it); }
 	};
 
-	std::vector<WiresGroup>					m_WireGroups;
-	std::deque<std::shared_ptr<Wire>>		m_AllWires;
-	std::deque<UPtrDrawableBaseTy>			m_DrawableElements;
+	std::vector<std::shared_ptr<Wire>>				m_AllWires;
+	std::unordered_map<eNode*,WiresGroup>			m_WireGroups;
+	std::vector<std::shared_ptr<eDrawableBase>>		m_DrawableElements;
+	std::unordered_map<eDrawableBase*, eElement*>	m_DrawableToElement;
 
-	std::unordered_map<eDrawableBase*, eElement*> m_DrawableToElement;
-
-
+	eNode*			LookupNodeByWire(Wire* wire);
+	void			SyncWithCircuit();
 
 public:
 
 	DrawableCircuit(Circuit& circuit) : m_Circuit(&circuit) { }
 	
-	Circuit*		GetCircuit() { return m_Circuit; }
 	void			Draw();
+	Circuit*		GetCircuit() { return m_Circuit; }
 	void			RemoveWire(Wire* wire);
-	void			RemoveElement(eDrawableBase* element);
-	void			BuildWiresGroups();
 
 	template <typename SimTy, typename DrawTy>
 	void AddElement(auto&&... args) 
 	{
 		eElement* elem = m_Circuit->AddElement<SimTy>(std::forward<decltype(args)>(args)...);
-		UPtrDrawableBaseTy drawable = std::make_unique<DrawTy>();
+		std::shared_ptr<eDrawableBase> drawable = std::make_shared<DrawTy>();
 		m_DrawableToElement[drawable.get()] = elem;
 		m_DrawableElements.push_back(std::move(drawable));
 	}
+	void			RemoveElement(eDrawableBase* element);
 };
 
 
@@ -228,35 +260,35 @@ class CircuitEditor
 	Wire* m_EditableWire = nullptr;
 	bool m_WireEditOnStart = false;
 
-	struct ClosestPointInfo
+	struct ClosestWirePointInfo
 	{
 		sf::Vector2f position;
 		float distance;
 		bool valid = false;
 	};
 
-	struct myOptInfo
+	struct ClosestPinData
 	{
 		sf::Vector2f ClosestPinPos;
 		int PinIndex;
-		eDrawableBase* DrawableElement;
+		std::weak_ptr<eDrawableBase> DrawableElement;
 	};
 
-	std::optional<myOptInfo> GetClosestElementPinPos(sf::Vector2f mousePos);
-
-	sf::Vector2f						 GetClosestPointOnSegment(sf::Vector2f point, sf::Vector2f segStart, sf::Vector2f segEnd);
-	ClosestPointInfo					 FindClosestPointToWire(Wire& wire, sf::Vector2f mousePos, float maxDistance = 20.f);
-	std::pair<bool, std::weak_ptr<Wire>> CheckForConnectionWithWire(const sf::Vector2f& MousePos, sf::Vector2f& end);
-	void								 SnapToGrid(sf::Vector2f& end, sf::Vector2f& start);
+	std::optional<ClosestPinData>			GetClosestElementPinInfo(sf::Vector2f mousePos);
+	sf::Vector2f							GetClosestPointOnSegment(sf::Vector2f point, sf::Vector2f segStart, sf::Vector2f segEnd);
+	ClosestWirePointInfo					FindClosestPointToWire(Wire& wire, sf::Vector2f mousePos, float maxDistance = 20.f);
+	std::optional<std::weak_ptr<Wire>>		CheckForConnectionWithOtherWire(const sf::Vector2f& MousePos, sf::Vector2f& end, Wire* selfWire);
+	void									SnapToGrid(sf::Vector2f& end, sf::Vector2f& start);
+	void									InitWireData(Wire* wire);
+	void									SplitWire(Wire* wire, u64 segmentIndex, sf::Vector2f point);
 
 public:
 
 	CircuitEditor(DrawableCircuit& circuit) : m_DrawableCircuit(&circuit) { }
+	
 	void DrawUI();
 	void HandleWireEditing();
 };
-
-
 
 
 

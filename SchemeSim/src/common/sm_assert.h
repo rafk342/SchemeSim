@@ -1,6 +1,11 @@
 #pragma once
 #include <iostream>
 #include <format>
+#include <stacktrace>
+namespace winapi
+{
+    #include <Windows.h>
+}
 
 #define ASSERTS_ENABLED 1
 
@@ -20,8 +25,15 @@ namespace _asserts
     {
         if (!expr)
         {
-            std::cerr << std::format("Assertion Failed : {} \nfile : {}\nline : {}", description, loc.file_name, loc.line_number) << std::endl;
-            std::exit(-1);
+			std::string msg = std::format("Assertion Failed: {} \nfile : {}\nline : {}\n", description, loc.file_name, loc.line_number);
+			msg += "Stacktrace:\n";
+
+            for (auto& frame : std::stacktrace::current())
+            {
+                msg += std::format("\t\t {:<80}| Line: {:<15}| File: {:<15}\n", frame.description(), frame.source_line(), frame.source_file());
+            }
+            winapi::MessageBoxA(nullptr, msg.c_str(), "Assert", MB_ICONERROR | MB_OK);
+            __debugbreak();
         }
     }
 }

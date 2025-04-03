@@ -9,12 +9,12 @@ class SFMLRenderer
 {
     static inline SFMLRenderer* self = nullptr;
     std::unique_ptr<sf::RenderWindow> m_Window;
-    sf::View        m_view;
-    sf::Font        m_font;
-    sf::Clock       m_Clock;
-    float           m_frameTime = 0;
-    float           m_fps = 0;
-    sf::Vector2f    m_DeltaMouse;
+    sf::View                    m_view;
+    sf::Font                    m_font;
+    sf::Clock                   m_Clock;
+    float                       m_frameTime = 0;
+    float                       m_fps = 0;
+    sf::Vector2f                m_DeltaMouse;
     
     SFMLRenderer() = default;
     void HandleEvents();

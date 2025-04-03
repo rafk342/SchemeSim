@@ -55,6 +55,9 @@ void Circuit::RemoveNode(eNode* node)
 
 void Circuit::RemoveElement(eElement* element)
 {
+	if (!element)
+		return;
+
 	auto it = std::ranges::find_if(m_Elements, [element](const UPtrElementTy& e) { return e.get() == element; });
 
 	if (it != m_Elements.end())
@@ -197,6 +200,28 @@ void Circuit::FinalizeMatrixSize()
 	{
 		element->InitMatrix(m_Matrix);
 	}
+}
+
+void Circuit::CleanupFromNodes()
+{
+	for (size_t i = m_Nodes.size(); i > 0; --i)
+	{
+		RemoveNode(m_Nodes[i - 1].get());
+	}
+}
+
+eNode* Circuit::MergeNodes(eNode* node1, eNode* node2)
+{
+	if (!node1 || !node2)
+		return nullptr;
+
+	for (auto& pin : node2->GetPins())
+	{
+		pin->ConnectToNode(node1);
+	}
+	RemoveNode(node2);
+	RebuildMatrix();
+	return node1;
 }
 
 
@@ -625,19 +650,8 @@ Circuit::ResultsType Circuit::Test8(double totalTime)
 	return Simulate(totalTime, dt);
 }
 
-
-
-void CircuitEditor::SnapToGrid(sf::Vector2f& end, sf::Vector2f& start)
-{
-	sf::Vector2f dir = end - start;
-	float degAngle = dir.angle().asDegrees();
-	float degSnappedAngle = std::round(degAngle / 45.f) * 45.f;
-	float radSnapped = sf::degrees(degSnappedAngle).asRadians();
-
-	dir = sf::Vector2f(std::cos(radSnapped), std::sin(radSnapped)) * dir.length();
-	end = start + dir;
-}
-
+//////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+//////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
 void DrawCircle(sf::Vector2f position, float radius, sf::Color color = sf::Color::Black)
 {
@@ -649,330 +663,26 @@ void DrawCircle(sf::Vector2f position, float radius, sf::Color color = sf::Color
 }
 
 
-
-std::optional<CircuitEditor::myOptInfo> CircuitEditor::GetClosestElementPinPos(sf::Vector2f mousePos)
-{
-	for (auto& elem : m_DrawableCircuit->m_DrawableElements)
-	{
-		sf::Vector2f elemPos = elem->GetPosition();
-
-		for (const auto& LocalPinPos : elem->GetLocalPinsPositions())
-		{
-			sf::Vector2f pinPos = elemPos + LocalPinPos; 
-			float dist = (mousePos - pinPos).length();
-			if (dist < 20.0f)
-				return myOptInfo{ pinPos, elem->GetPinIndexFromLocalPosition(LocalPinPos), elem.get()};
-		}
-	}
-	return std::nullopt;
-}
-
-
-sf::Vector2f CircuitEditor::GetClosestPointOnSegment(sf::Vector2f point, sf::Vector2f segStart, sf::Vector2f segEnd)
-{
-	sf::Vector2f segDir = segEnd - segStart;
-	float segLength = segDir.length();
-
-	if (segLength == 0)
-		return segStart;
-
-	sf::Vector2f pointDir = point - segStart;
-	float t = std::max(0.f, std::min(1.f, (pointDir.dot(segDir)) / (segLength * segLength)));
-
-	return segStart + segDir * t;
-}
-
-
-CircuitEditor::ClosestPointInfo CircuitEditor::FindClosestPointToWire(Wire& wire, sf::Vector2f mousePos, float maxDistance)
-{
-	auto& segments = *wire.GetSegments();
-
-	if (segments.empty())
-		return {};
-
-	auto [minIt, maxIt] = std::minmax_element(segments.begin(), segments.end(),
-		[&](const Wire::Segment& a, const Wire::Segment& b)
-		{
-			sf::Vector2f pointA = GetClosestPointOnSegment(mousePos, a.vStart, a.vEnd);
-			sf::Vector2f pointB = GetClosestPointOnSegment(mousePos, b.vStart, b.vEnd);
-			float distA = (mousePos - pointA).length();
-			float distB = (mousePos - pointB).length();
-			return distA < distB;
-		});
-
-	sf::Vector2f closestPoint = GetClosestPointOnSegment(mousePos, minIt->vStart, minIt->vEnd);
-	float minDistance = (mousePos - closestPoint).length();
-
-	ClosestPointInfo result{};
-	if (minDistance <= maxDistance)
-	{
-		result.position = closestPoint;
-		result.distance = minDistance;
-		result.valid = true;
-	}
-	return result;
-}
-
-
-std::pair<bool, std::weak_ptr<Wire>> CircuitEditor::CheckForConnectionWithWire(const sf::Vector2f& MousePos, sf::Vector2f& pos)
-{
-	for (auto& wire : m_DrawableCircuit->m_AllWires)
-	{
-		if (wire.get() == m_EditableWire)
-			continue;
-
-		ClosestPointInfo info = FindClosestPointToWire(*wire.get(), MousePos);
-		if (info.valid)
-		{
-			pos = info.position;
-			return { true, std::weak_ptr<Wire>(wire) };
-		}
-	}
-	return { false, {} };
-}
-
-
-void CircuitEditor::DrawUI()
-{
-	ImGui::Begin("Editor");
-
-	if (ImGui::CollapsingHeader("Wires"))
-	{
-		bool InEditMode = m_EditableWire != nullptr;
-		if (InEditMode)
-		{
-			ImGui::Text("Editing Wire");
-		}
-		else
-		{
-			auto& wires = m_DrawableCircuit->m_AllWires;
-
-			if (ImGui::Button("Add Wire"))
-				wires.push_back(std::make_shared<Wire>());
-			
-			ImGui::Separator();
-
-			if (ImGui::BeginTable("Wires", 3, ImGuiTableFlags_Borders))
-			{
-				auto toRemove = wires.end();
-				for (size_t i = 0; i < wires.size(); i++)
-				{
-					Wire& wire = *wires[i];
-
-					ImGui::TableNextRow();
-					ImGui::TableNextColumn();
-
-					if (ImGui::TreeNode(vfmt("Wire {}", i)))
-					{
-						for (size_t j = 0; j < wire.GetSegments()->size(); j++)
-						{
-							auto& segment = wire.GetSegments()->at(j);
-							ImGui::Separator();
-							ImGui::Text(vfmt("Segment {}", j));
-							ImGui::InputFloat2(vfmt("Start##{}{}", i, j), &segment.vStart.x, "%.5f");
-							ImGui::InputFloat2(vfmt("End##{}{}", i, j), &segment.vEnd.x, "%.5f");
-						}
-					
-						ImGui::TreePop();
-					}
-
-					ImGui::TableNextColumn();
-					if (ImGui::Button(vfmt("Edit## {}", i)))
-					{
-						m_EditableWire = &wire;
-						m_EditableWire->SetDrawEndDot(false);
-						m_EditableWire->SetDrawStartDot(false);
-						m_WireEditOnStart = true;
-					}
-					if (ImGui::IsItemHovered())
-						wire.SetColor(sf::Color::Red * sf::Color(255, 255, 255, 100));
-					else
-						wire.SetColor(sf::Color::Black);
-
-					ImGui::TableNextColumn();
-					if (ImGui::Button(vfmt("Remove##{}", i)))
-					{
-						toRemove = wires.begin() + i;
-						if (m_EditableWire == &wire)
-							m_EditableWire = nullptr;
-					}
-
-				}
-
-				if (toRemove != wires.end())
-					m_DrawableCircuit->RemoveWire(toRemove->get());
-
-				ImGui::EndTable();
-			}
-		}
-	}
-
-	if (ImGui::CollapsingHeader("Elements"))
-	{
-		if (ImGui::Button("Make Resistor"))
-			m_DrawableCircuit->AddElement<eResistor, Resistor>(5.0);
-
-		auto& DrawableElements = m_DrawableCircuit->m_DrawableElements;
-
-		for (size_t i = 0; i < DrawableElements.size(); i++)
-		{
-			eDrawableBase* elem = DrawableElements[i].get();
-			eElement* electricElem = m_DrawableCircuit->m_DrawableToElement.at(elem);
-			if (ImGui::TreeNode(vfmt("Element {} {}", i , electricElem->GetTypeName())))
-			{
-				elem->UIParams(electricElem);
-				ImGui::TreePop();
-			}
-		}
-	}
-
-
-	ImGui::End();
-	
-	HandleWireEditing();
-}
-
-
-void CircuitEditor::HandleWireEditing()
-{
-	if (!m_EditableWire)
-		return;
-
-
-	sf::Vector2f MousePos = g_SFMLRenderer.GetWorldMousePos();
-	auto* segments = m_EditableWire->GetSegments();
-
-
-	if (segments->size() == 0)
-	{
-		if (ImGui::IsMouseClicked(ImGuiMouseButton_Left))
-			segments->push_back({ MousePos, MousePos });
-		
-		m_WireEditOnStart = false;
-	}
-	else
-	{
-		auto* lastWire = &segments->back();
-		if (m_WireEditOnStart)
-		{
-			segments->push_back({ lastWire->vEnd, MousePos });
-			lastWire = &segments->back();
-			m_WireEditOnStart = false;
-		}
-
-		lastWire->vEnd = MousePos;
-
-		sf::Vector2f& start = lastWire->vStart;
-		sf::Vector2f& end = lastWire->vEnd;
-
-
-		if (sf::Keyboard::isKeyPressed(sf::Keyboard::Key::LShift))
-			SnapToGrid(end, start);
-
-		if (ImGui::IsMouseClicked(ImGuiMouseButton_Left))
-		{
-			segments->push_back({ end, MousePos });
-		}
-	}
-
-
-	if (ImGui::IsKeyPressed(ImGuiKey::ImGuiKey_Enter, false) || ImGui::IsKeyPressed(ImGuiKey::ImGuiKey_Escape, false))
-	{
-		if (segments->size() != 0)
-			segments->pop_back();
-
-		if (segments->size() == 0)
-		{
-			m_EditableWire->SetDrawStartDot(false);
-			m_EditableWire->SetDrawEndDot(false);
-			m_EditableWire = nullptr;
-			return;
-		}
-		
-
-		std::optional closestPinPosEnd = GetClosestElementPinPos(segments->back().vEnd);
-		std::optional closestPinPosStart = GetClosestElementPinPos(segments->front().vStart);
-
-		if (closestPinPosEnd) // Wire end is connected to a pin
-		{
-			auto& [pos, pinIndex, elem] = *closestPinPosEnd;
-
-			segments->back().vEnd = pos;
-			m_EditableWire->SetDrawEndDot(false);
-			m_EditableWire->SetConnectionTypeAtEnd(Wire::ConnectionType::ToPin);
-			m_EditableWire->GetDataAtEnd() = Wire::DataToPin{ elem, pinIndex };
-		}
-		else if (auto [ConnectedToWire, wirePtr] = CheckForConnectionWithWire(segments->back().vEnd, segments->back().vEnd); ConnectedToWire) // Wire end is connected to another wire
-		{
-			m_EditableWire->SetDrawEndDot(ConnectedToWire);
-			m_EditableWire->SetConnectionTypeAtEnd(Wire::ConnectionType::ToWire);
-			m_EditableWire->GetDataAtEnd() = Wire::DataToWire{ wirePtr };
-		}
-		else
-		{
-			// Wire end is not connected to anything
-			m_EditableWire->SetConnectionTypeAtEnd(Wire::ConnectionType::ToNothing);
-			m_EditableWire->SetDrawEndDot(false);
-			m_EditableWire->GetDataAtEnd() = Wire::DataToNothing{};
-		}
-		
-
-		//Same as above but for the start
-		if (closestPinPosStart) // Wire start is connected to a pin
-		{
-			auto& [pos, pinIndex, elem] = *closestPinPosStart;
-
-			segments->front().vStart = pos;
-			m_EditableWire->SetDrawStartDot(false);
-			m_EditableWire->SetConnectionTypeAtStart(Wire::ConnectionType::ToPin);
-			m_EditableWire->GetDataAtStart() = Wire::DataToPin{ elem, pinIndex };
-		}
-		else if (auto [ConnectedToWire, wirePtr] = CheckForConnectionWithWire(segments->front().vStart, segments->front().vStart); ConnectedToWire) // Wire start is connected to another wire
-		{
-			m_EditableWire->SetDrawStartDot(true);
-			m_EditableWire->SetConnectionTypeAtStart(Wire::ConnectionType::ToWire);
-			m_EditableWire->GetDataAtStart() = Wire::DataToWire{ wirePtr };
-		}
-		else
-		{
-			// Wire start is not connected to anything
-			m_EditableWire->SetDrawStartDot(false);
-			m_EditableWire->SetConnectionTypeAtStart(Wire::ConnectionType::ToNothing);
-			m_EditableWire->GetDataAtStart() = Wire::DataToNothing{};
-		}
-		
-
-		// TODO: make something to build m_WireGroups
-
-		m_EditableWire = nullptr;
-	}
-
-
-	if (ImGui::IsKeyPressed(ImGuiKey::ImGuiKey_Backspace, false))
-	{
-		if (segments->size() != 0)
-		{
-			segments->pop_back();
-		}
-	}
-	
-}
-
-
-
-
 void Wire::Draw()
 {
+	if (m_Segments.empty())
+		return;
+
+	if (IsHoveredInGroupList || IsHoveredInMainList)
+		SetColor(sf::Color::Red * sf::Color(255, 255, 255, 100));
+	else
+		SetColor(sf::Color::Black);
+
 	for (size_t i = 0; i < m_Segments.size(); i++)
 	{
 		auto& segment = m_Segments[i];
 		DrawThickLine(segment.vStart, segment.vEnd, m_WireThickness, m_WireColor);
 		
 		if (i == 0 && m_DrawStartDot)
-			DrawCircle(segment.vStart, m_WireThickness * 1.5f, sf::Color::Black);
+			DrawCircle(segment.vStart, m_WireThickness * 1.3f, sf::Color::Black);
 
 		if (i == m_Segments.size() - 1 && m_DrawEndDot)
-			DrawCircle(segment.vEnd, m_WireThickness * 1.5f, sf::Color::Black);
+			DrawCircle(segment.vEnd, m_WireThickness * 1.3f, sf::Color::Black);
 	}
 }
 
@@ -995,20 +705,41 @@ void Wire::DrawThickLine(sf::Vector2f start, sf::Vector2f end, float thickness, 
 
 
 
+//////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+//////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+
 
 void DrawableCircuit::Draw()
 {
-	for (auto& wire : m_AllWires)
-	{
-		wire->Draw();
-	}
-
 	for (auto& drawable : m_DrawableElements)
 	{
 		drawable->Draw();
 	}
+
+	for (auto& wire : m_AllWires)
+	{
+		wire->Draw();
+	}
 }
 
+
+eNode* DrawableCircuit::LookupNodeByWire(Wire* wire)
+{
+	for (auto& [node, group] : m_WireGroups)
+	{
+		for (auto& groupWire : group)
+		{
+			if (auto p = groupWire.lock())
+			{
+				if (p.get() == wire)
+				{
+					return node;
+				}
+			}
+		}
+	}
+	return nullptr;
+}
 
 void DrawableCircuit::RemoveWire(Wire* wire)
 {
@@ -1024,28 +755,454 @@ void DrawableCircuit::RemoveWire(Wire* wire)
 
 void DrawableCircuit::RemoveElement(eDrawableBase* element)
 {
-	auto it = std::ranges::find_if(m_DrawableElements, [element](const UPtrDrawableBaseTy& e) { return e.get() == element; });
+	if (!element)
+		return;
 
-	if (it != m_DrawableElements.end())
-		m_DrawableElements.erase(it);
+	auto it = std::ranges::find_if(m_DrawableElements, [element](const std::shared_ptr<eDrawableBase>& e) { return e.get() == element; });
+	SM_ASSERT(it != m_DrawableElements.end(), std::format("DrawableCircuit::RemoveElement() -> Element {:X} was not found",u64(element)));
+	if (it == m_DrawableElements.end())
+		return;
 
+	m_DrawableElements.erase(it);
 	m_Circuit->RemoveElement(m_DrawableToElement.at(element));
+	m_DrawableToElement.erase(element);
 }
 
 
-void DrawableCircuit::BuildWiresGroups()
+void DrawableCircuit::SyncWithCircuit()
 {
-	m_WireGroups.clear();
+	// Rebuild all connections with elements
+	for (auto& [node, group] : m_WireGroups)
+	{
+		node->ReleaseAllPins();
 
+		for (auto weakWire : group)
+		{
+			auto wirePtr = weakWire.lock();
+			if (!wirePtr)
+				continue;
+
+			Wire::DataToPin* PinInfoAtStart = std::get_if<Wire::DataToPin>(&wirePtr->DataAtStart());
+			Wire::DataToPin* PinInfoAtEnd = std::get_if<Wire::DataToPin>(&wirePtr->DataAtEnd());
+
+			if (auto drawable = PinInfoAtStart->element.lock())
+			{
+				eElement* elem = m_DrawableToElement.at(drawable.get());
+				SM_ASSERT(elem != nullptr, "DrawableCircuit::SyncWithCircuit() -> Element is nullptr!");
+
+				if (PinInfoAtStart)
+					if (ePin* pin = elem->GetEpin(PinInfoAtStart->pinIndex))
+						pin->ConnectToNode(node);
+
+				if (PinInfoAtEnd)
+					if (ePin* pin = elem->GetEpin(PinInfoAtEnd->pinIndex))
+						pin->ConnectToNode(node);
+			}
+		}
+	}	
 }
 
+
+
+
+
+///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+
+
+void CircuitEditor::SnapToGrid(sf::Vector2f& end, sf::Vector2f& start)
+{
+	sf::Vector2f dir = end - start;
+	float degAngle = dir.angle().asDegrees();
+	float degSnappedAngle = std::round(degAngle / 45.f) * 45.f;
+	float radSnapped = sf::degrees(degSnappedAngle).asRadians();
+	
+	dir = sf::Vector2f(std::cos(radSnapped), std::sin(radSnapped)) * dir.length();
+	end = start + dir;
+}
+
+
+std::optional<CircuitEditor::ClosestPinData> CircuitEditor::GetClosestElementPinInfo(sf::Vector2f mousePos)
+{
+	for (auto& elem : m_DrawableCircuit->m_DrawableElements)
+	{
+		sf::Vector2f elemPos = elem->GetPosition();
+
+		for (const sf::Vector2f& LocalPinPos : elem->GetLocalPinsPositions())
+		{
+			sf::Vector2f pinPos = elemPos + LocalPinPos;
+			float dist = (mousePos - pinPos).length();
+			if (dist < 20.0f)
+				return ClosestPinData{ pinPos, elem->GetPinIndexFromLocalPosition(LocalPinPos), elem };
+		}
+	}
+	return std::nullopt;
+}
+
+
+sf::Vector2f CircuitEditor::GetClosestPointOnSegment(sf::Vector2f point, sf::Vector2f segStart, sf::Vector2f segEnd)
+{
+	sf::Vector2f segDir = segEnd - segStart;
+	float segLength = segDir.length();
+
+	if (segLength == 0)
+		return segStart;
+
+	sf::Vector2f pointDir = point - segStart;
+	float t = std::max(0.f, std::min(1.f, (pointDir.dot(segDir)) / (segLength * segLength)));
+
+	return segStart + segDir * t;
+}
+
+
+CircuitEditor::ClosestWirePointInfo CircuitEditor::FindClosestPointToWire(Wire& wire, sf::Vector2f mousePos, float maxDistance)
+{
+	auto& segments = *wire.GetSegments();
+
+	if (segments.empty())
+		return {};
+
+	auto [minIt, maxIt] = std::minmax_element(segments.begin(), segments.end(),
+		[&](const Wire::Segment& a, const Wire::Segment& b)
+		{
+			sf::Vector2f pointA = GetClosestPointOnSegment(mousePos, a.vStart, a.vEnd);
+			sf::Vector2f pointB = GetClosestPointOnSegment(mousePos, b.vStart, b.vEnd);
+			float distA = (mousePos - pointA).length();
+			float distB = (mousePos - pointB).length();
+			return distA < distB;
+		});
+
+	sf::Vector2f closestPoint = GetClosestPointOnSegment(mousePos, minIt->vStart, minIt->vEnd);
+	float minDistance = (mousePos - closestPoint).length();
+
+	ClosestWirePointInfo result{};
+	if (minDistance <= maxDistance)
+	{
+		result.position = closestPoint;
+		result.distance = minDistance;
+		result.valid = true;
+	}
+	return result;
+}
+
+
+std::optional<std::weak_ptr<Wire>> CircuitEditor::CheckForConnectionWithOtherWire(const sf::Vector2f& MousePos, sf::Vector2f& end, Wire* selfWire)
+{
+	for (auto& wire : m_DrawableCircuit->m_AllWires)
+	{
+		if (wire.get() == selfWire)
+			continue;
+
+		ClosestWirePointInfo info = FindClosestPointToWire(*wire.get(), MousePos);
+		if (info.valid)
+		{
+			end = info.position;
+			return std::weak_ptr<Wire>(wire);
+		}
+	}
+	return std::nullopt;
+}
+
+
+void CircuitEditor::DrawUI()
+{
+	ImGui::Begin("Editor");
+
+	if (ImGui::CollapsingHeader("Wires"))
+	{
+		bool InEditMode = m_EditableWire != nullptr;
+		if (InEditMode)
+		{
+			ImGui::Text("Editing Wire");
+		}
+		else
+		{
+			auto& wires = m_DrawableCircuit->m_AllWires;
+
+			if (ImGui::Button("Add Wire"))
+				wires.push_back(std::make_shared<Wire>());
+
+			ImGui::Separator();
+
+			if (ImGui::BeginTable("Wires", 3, ImGuiTableFlags_Borders))
+			{
+				ImGui::TableSetupColumn("Wires");
+				ImGui::TableSetupColumn("Edit", ImGuiTableColumnFlags_WidthFixed, ImGui::CalcTextSize("Edit").x + 5);
+				ImGui::TableSetupColumn("Remove", ImGuiTableColumnFlags_WidthFixed, ImGui::CalcTextSize("Remove").x + 5);
+
+				auto toRemove = wires.end();
+				for (size_t i = 0; i < wires.size(); i++)
+				{
+					Wire& wire = *wires[i];
+
+					ImGui::TableNextRow();
+					ImGui::TableNextColumn();
+
+					//if (ImGui::TreeNode(vfmt("Wire {}", i)))
+					//{
+					//	for (size_t j = 0; j < wire.GetSegments()->size(); j++)
+					//	{
+					//		auto& segment = wire.GetSegments()->at(j);
+					//		ImGui::Separator();
+					//		ImGui::Text(vfmt("Segment {}", j));
+					//		ImGui::InputFloat2(vfmt("Start##{}{}", i, j), &segment.vStart.x, "%.5f");
+					//		ImGui::InputFloat2(vfmt("End##{}{}", i, j), &segment.vEnd.x, "%.5f");
+					//	}
+					//	ImGui::TreePop();
+					//}
+
+					ImGui::Text(vfmt("WireID: {}", wire.GetID()));
+					wire.IsHoveredInMainList = ImGui::IsItemHovered();
+
+
+					if (ImGui::BeginDragDropSource(ImGuiDragDropFlags_SourceAllowNullID))
+					{
+						ImGui::SetDragDropPayload("myWirePayload", &i, sizeof(size_t));
+						ImGui::Text("Move it to node");
+						ImGui::EndDragDropSource();
+					}
+
+					ImGui::TableNextColumn();
+					if (ImGui::Button(vfmt("Edit## {}", i)))
+					{
+						m_EditableWire = &wire;
+						m_EditableWire->SetDrawEndDot(false);
+						m_EditableWire->SetDrawStartDot(false);
+						m_WireEditOnStart = true;
+					}
+					
+					ImGui::TableNextColumn();
+					if (ImGui::Button(vfmt("Remove##{}", i)))
+					{
+						toRemove = wires.begin() + i;
+						if (m_EditableWire == &wire)
+							m_EditableWire = nullptr;
+					}
+				}
+
+				if (toRemove != wires.end())
+					m_DrawableCircuit->RemoveWire(toRemove->get());
+
+				ImGui::EndTable();
+			}
+
+			if (ImGui::TreeNode("Nodes"))
+			{
+				if (ImGui::Button("MakeNode"))
+				{
+					eNode* node = m_DrawableCircuit->GetCircuit()->CreateNode();
+					m_DrawableCircuit->m_WireGroups.insert({ node, {} });
+				}
+
+
+				for (auto& [node, wireGroup] : m_DrawableCircuit->m_WireGroups)
+				{
+					wireGroup.CleanUpFromExiredWires();
+
+					ImGui::Separator();
+					ImGui::Text(vfmt("Node {}", node->GetIndex()));
+					if (ImGui::BeginDragDropTarget())
+					{
+						if (const ImGuiPayload* payload = ImGui::AcceptDragDropPayload("myWirePayload"))
+						{
+							size_t index = *(size_t*)payload->Data;
+							wireGroup.insert(wires[index]);
+							//wires[index]->SetNode(node);
+						}
+						ImGui::EndDragDropTarget();
+					}
+
+					ImGui::Indent();
+
+
+					if (ImGui::BeginTable("Wires", 2, ImGuiTableFlags_Borders))
+					{
+						ImGui::TableSetupColumn("WiresColumn");
+						ImGui::TableSetupColumn("RemoveColumn", ImGuiTableColumnFlags_WidthFixed, ImGui::CalcTextSize("[X]").x + 5);
+
+						for (auto it = wireGroup.begin(); it != wireGroup.end();)
+						{
+							ImGui::TableNextRow();
+							ImGui::TableNextColumn();
+
+							Wire* wire = it->lock().get();
+							ImGui::Text(vfmt("WireID: {}", wire->GetID()));
+
+							wire->IsHoveredInGroupList = ImGui::IsItemHovered();
+
+							ImGui::TableNextColumn();
+							if (ImGui::Button(vfmt("[X]##{}", wire->GetID())))
+							{
+								it = wireGroup.erase(it);
+							}
+							else
+							{
+								++it;
+							}
+						}
+					
+						ImGui::EndTable();
+					}
+
+					ImGui::Unindent();
+				}
+
+				ImGui::TreePop();
+			}
+
+		}
+	}
+
+	if (ImGui::CollapsingHeader("Elements"))
+	{
+		if (ImGui::Button("Make Resistor"))
+			m_DrawableCircuit->AddElement<eResistor, Resistor>(5.0);
+
+		auto& DrawableElements = m_DrawableCircuit->m_DrawableElements;
+
+		for (size_t i = 0; i < DrawableElements.size(); i++)
+		{
+			eDrawableBase* elem = DrawableElements[i].get();
+			eElement* electricElem = m_DrawableCircuit->m_DrawableToElement.at(elem);
+			if (ImGui::TreeNode(vfmt("Element {} {}", i, electricElem->GetTypeName())))
+			{
+				elem->UIParams(electricElem);
+				ImGui::TreePop();
+			}
+		}
+	}
+
+
+	ImGui::End();
+
+	HandleWireEditing();
+}
+
+
+
+void CircuitEditor::HandleWireEditing()
+{
+	if (!m_EditableWire)
+		return;
+
+
+	sf::Vector2f MousePos = g_SFMLRenderer.GetWorldMousePos();
+	auto* segments = m_EditableWire->GetSegments();
+	if (segments->size() == 0)
+	{
+		if (ImGui::IsMouseClicked(ImGuiMouseButton_Left))
+			segments->push_back({ MousePos, MousePos });
+
+		m_WireEditOnStart = false;
+	}
+	else
+	{
+		auto* lastSegment = &segments->back();
+		if (m_WireEditOnStart)
+		{
+			segments->push_back({ lastSegment->vEnd, MousePos });
+			lastSegment = &segments->back();
+			m_WireEditOnStart = false;
+		}
+
+		lastSegment->vEnd = MousePos;
+
+		sf::Vector2f& start = lastSegment->vStart;
+		sf::Vector2f& end = lastSegment->vEnd;
+
+
+		if (sf::Keyboard::isKeyPressed(sf::Keyboard::Key::LShift))
+			SnapToGrid(end, start);
+
+		if (ImGui::IsMouseClicked(ImGuiMouseButton_Left))
+		{
+			segments->push_back({ end, MousePos });
+		}
+	}
+
+	if (ImGui::IsKeyPressed(ImGuiKey::ImGuiKey_Backspace, false))
+	{
+		if (segments->size() != 0)
+		{
+			segments->pop_back();
+		}
+	}
+
+	if (ImGui::IsKeyPressed(ImGuiKey::ImGuiKey_Enter, false) || ImGui::IsKeyPressed(ImGuiKey::ImGuiKey_Escape, false))
+	{
+		if (segments->size() != 0)
+			segments->pop_back();
+		
+		for (auto& wire : m_DrawableCircuit->m_AllWires) // Reinitalize all wires
+		{
+			InitWireData(wire.get());
+		}
+
+		m_EditableWire = nullptr;
+	}
+}
+
+
+void CircuitEditor::InitWireData(Wire* wire)
+{
+	std::vector<Wire::Segment>* segments = wire->GetSegments();
+	if (segments->size() == 0)
+	{
+		wire->SetDrawStartDot(false);
+		wire->SetDrawEndDot(false);
+	}
+	else
+	{
+		auto UpdateConnectionData = [this](auto SetDrawDotFunc, auto SetConnectionTypeFunc, auto GetOptDataFunc, Wire* wire, sf::Vector2f& point)
+			{
+				if (std::optional pinInfo = GetClosestElementPinInfo(point)) // We are close to some pin
+				{
+					auto& [pos, pinIndex, elem] = *pinInfo;
+					point = pos;
+					(wire->*SetDrawDotFunc)(false);
+					(wire->*SetConnectionTypeFunc)(Wire::ConnectionType::ToPin);
+					(wire->*GetOptDataFunc)() = Wire::DataToPin{ .element = elem, .pinIndex = pinIndex };
+				}
+				else if (std::optional OtherWirePtr = CheckForConnectionWithOtherWire(point, point, wire)) // Snap to other wire
+				{
+					(wire->*SetDrawDotFunc)(true);
+					(wire->*SetConnectionTypeFunc)(Wire::ConnectionType::ToWire);
+					(wire->*GetOptDataFunc)() = Wire::DataToWire{ .wire = *OtherWirePtr };
+				}
+				else // Just wire without any connection at the end
+				{
+					(wire->*SetDrawDotFunc)(false);
+					(wire->*SetConnectionTypeFunc)(Wire::ConnectionType::ToNothing);
+					(wire->*GetOptDataFunc)() = Wire::DataToNothing{ };
+				}
+			};
+
+		UpdateConnectionData(
+			&Wire::SetDrawEndDot, 
+			&Wire::SetConnectionTypeAtEnd, 
+			&Wire::DataAtEnd,
+			wire, 
+			segments->back().vEnd);
+
+		UpdateConnectionData(
+			&Wire::SetDrawStartDot,
+			&Wire::SetConnectionTypeAtStart, 
+			&Wire::DataAtStart,
+			wire, 
+			segments->front().vStart);
+	}
+}
+
+
+//////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+//////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
 
 Resistor::Resistor()
 	: eDrawableBase("assets\\resistor.png")
 {
 	GetTexture().setSmooth(true);
-	m_EpinPositions =
+	m_PinPositions =
 	{
 		{ 0.0f, 184.0f}, 
 		{ float(m_sprite.getTextureRect().size.x), 184.0f }
@@ -1081,7 +1238,7 @@ void Resistor::UIParams(eElement* elem)
 
 int Resistor::GetPinIndexFromLocalPosition(sf::Vector2f pos)
 {
-	return pos == m_EpinPositions[0] ? 0 : 1;
+	return pos == m_PinPositions[0] ? 0 : 1;
 }
 
 

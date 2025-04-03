@@ -5,6 +5,8 @@
 
 #include "core/SFMLRenderer.h"
 #include <windows.h>
+#include <stacktrace>
+#include <format>
 
 //void* operator new(size_t sz) noexcept
 //{
@@ -22,6 +24,53 @@
 //    SFMLRenderer::Destroy();
 //    return 0;
 //}
+
+inline const char* GetExceptionName(DWORD code)
+{
+	switch (code)
+	{
+		case EXCEPTION_ACCESS_VIOLATION          : return "EXCEPTION_ACCESS_VIOLATION";
+		case EXCEPTION_DATATYPE_MISALIGNMENT     : return "EXCEPTION_DATATYPE_MISALIGNMENT";
+		case EXCEPTION_BREAKPOINT                : return "EXCEPTION_BREAKPOINT";
+		case EXCEPTION_SINGLE_STEP               : return "EXCEPTION_SINGLE_STEP";
+		case EXCEPTION_ARRAY_BOUNDS_EXCEEDED     : return "EXCEPTION_ARRAY_BOUNDS_EXCEEDED";
+		case EXCEPTION_FLT_DENORMAL_OPERAND      : return "EXCEPTION_FLT_DENORMAL_OPERAND";
+		case EXCEPTION_FLT_DIVIDE_BY_ZERO        : return "EXCEPTION_FLT_DIVIDE_BY_ZERO";
+		case EXCEPTION_FLT_INEXACT_RESULT        : return "EXCEPTION_FLT_INEXACT_RESULT";
+		case EXCEPTION_FLT_INVALID_OPERATION     : return "EXCEPTION_FLT_INVALID_OPERATION";
+		case EXCEPTION_FLT_OVERFLOW              : return "EXCEPTION_FLT_OVERFLOW";
+		case EXCEPTION_FLT_STACK_CHECK           : return "EXCEPTION_FLT_STACK_CHECK";
+		case EXCEPTION_FLT_UNDERFLOW             : return "EXCEPTION_FLT_UNDERFLOW";
+		case EXCEPTION_INT_DIVIDE_BY_ZERO        : return "EXCEPTION_INT_DIVIDE_BY_ZERO";
+		case EXCEPTION_INT_OVERFLOW              : return "EXCEPTION_INT_OVERFLOW";
+		case EXCEPTION_PRIV_INSTRUCTION          : return "EXCEPTION_PRIV_INSTRUCTION";
+		case EXCEPTION_IN_PAGE_ERROR             : return "EXCEPTION_IN_PAGE_ERROR";
+		case EXCEPTION_ILLEGAL_INSTRUCTION       : return "EXCEPTION_ILLEGAL_INSTRUCTION";
+		case EXCEPTION_NONCONTINUABLE_EXCEPTION  : return "EXCEPTION_NONCONTINUABLE_EXCEPTION";
+		case EXCEPTION_STACK_OVERFLOW            : return "EXCEPTION_STACK_OVERFLOW";
+		case EXCEPTION_INVALID_DISPOSITION       : return "EXCEPTION_INVALID_DISPOSITION";
+		case EXCEPTION_GUARD_PAGE                : return "EXCEPTION_GUARD_PAGE";
+		case EXCEPTION_INVALID_HANDLE            : return "EXCEPTION_INVALID_HANDLE";
+		default:
+			return "UNKNOWN EXCEPTION";
+	}
+}
+
+inline LONG WINAPI exception_filter(EXCEPTION_POINTERS* info)
+{
+	std::string msg = std::format("Exception caught: {} (0x{:08X})\n", GetExceptionName(info->ExceptionRecord->ExceptionCode), info->ExceptionRecord->ExceptionCode);
+	msg += "Stacktrace:\n";
+
+	for (auto& frame : std::stacktrace::current())
+	{
+		msg += std::format("\t\t {:<80}| Line: {:<15}| File: {:<15}\n", frame.description(), frame.source_line(), frame.source_file());
+	}
+
+	MessageBoxA(nullptr, msg.c_str(), "Exception", MB_ICONERROR | MB_OK);
+	__debugbreak();
+	return EXCEPTION_EXECUTE_HANDLER;
+}
+
 
 class Console
 {
@@ -42,9 +91,20 @@ public:
 	}
 };
 
+
 int APIENTRY WinMain(_In_ HINSTANCE hInstance, _In_opt_ HINSTANCE hPrevInstance, _In_ LPSTR lpCmdLine, _In_ int nCmdShow)
 {
+	SetUnhandledExceptionFilter(exception_filter);
+
 	Console console;
-	SFMLRenderer::Create()->Init()->OnRender()->Destroy();
+	__try
+	{
+		SFMLRenderer::Create()->Init()->OnRender()->Destroy();
+	}
+	__except (exception_filter(GetExceptionInformation()))
+	{
+
+	}
+
     return 0;
 }

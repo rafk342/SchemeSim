@@ -45,10 +45,7 @@ eNode::eNode(u64 index)
 
 eNode::~eNode()
 {
-	for (ePin* pin : m_ePins)
-		pin->ReleaseNode();
-
-	m_ePins.clear();
+	ReleaseAllPins();
 }
 
 
@@ -63,6 +60,13 @@ void eNode::RemoveEpin(ePin* epin)
 {
 	if (m_ePins.contains(epin))
 		m_ePins.erase(epin);
+}
+
+void eNode::ReleaseAllPins()
+{
+	for (ePin* pin : m_ePins)
+		pin->ReleaseNode();
+	m_ePins.clear();
 }
 
 
@@ -883,9 +887,9 @@ eTransformer::eTransformer(double Inductance1, double Inductance2, double transf
 	, m_CouplCoef(transformCoef)
 	, m_I1(0.0)
 	, m_I2(0.0)
-{   
+{   //
  	// 0 ───┐   ┌─── 2
-	//      ) │ (
+	//    * ) │ (*
 	// 	    ) │ ( 
 	//	    ) │ ( 
 	// 1 ───┘   └─── 3

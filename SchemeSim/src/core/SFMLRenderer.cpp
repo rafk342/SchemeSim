@@ -262,6 +262,7 @@ SFMLRenderer* SFMLRenderer::OnRender()
 			circuitRef.Draw();
 			editor.DrawUI();
 
+			ImGui::ShowDemoWindow();
 			DrawGrid({ 1000.0f,1000.0f }, { 100.0f, 100.0f }, sf::Color(164, 164, 164, 255));
 
 			drawableCircuit.Draw();

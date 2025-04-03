@@ -42,6 +42,8 @@ public:
 	u64		GetIndex() const { return m_NodeIndex; }
 	u64		GetNumConnectedPins() const { return m_ePins.size(); }
 	void    SetIndex(u64 index) { m_NodeIndex = index; }
+	std::set<ePin*>& GetPins() { return m_ePins; }
+	void	ReleaseAllPins();
 };
 
 
