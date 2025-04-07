@@ -1,8 +1,8 @@
-#include "SFMLRenderer.h"
+﻿#include "SFMLRenderer.h"
 #include "core/DrawList.h"
 #include <chrono>
 #include "Timer.h"
-#include "sim/circuit.h"
+#include "sim/drawableCircuit.h"
 #include "imgui.h"
 #include "imgui-SFML.h"
 
@@ -198,7 +198,6 @@ void DrawGrid(const sf::Vector2f& gridSize, const sf::Vector2f& cellSize, const 
 }
 
 
-
 SFMLRenderer* SFMLRenderer::OnRender()
 {
 	sf::Vector2f PrevMousePos{};
@@ -209,7 +208,7 @@ SFMLRenderer* SFMLRenderer::OnRender()
 
 	Timer timer;
 
-	circuit.Test1();
+	circuit.Test3();
 	circuit.Reset();
 	//std::cout << "-------------------\n";
 	//circuit.Test2();
@@ -219,15 +218,15 @@ SFMLRenderer* SFMLRenderer::OnRender()
 	//circuit.Reset();
 	//std::cout << "-------------------\n";
 
-	float Time = 0.5;
-	timer.Start();
-	Circuit::ResultsType results = circuit.Test8(Time);
-	circuit.Reset();
+	//float Time = 0.5;
+	//timer.Start();
+	//Circuit::ResultsType results = circuit.Test3(Time);
+	//circuit.Reset();
 
-	timer.Stop();
+//	timer.Stop();
 
-	std::cout << "Elapsed Time : " << std::format("{:.10f}", timer.GetElapsedSeconds()) << " s\n";
-	CircuitRef circuitRef;
+	//std::cout << "Elapsed Time : " << std::format("{:.10f}", timer.GetElapsedSeconds()) << " s\n";
+	//CircuitRef circuitRef;
 
 #if CREATE_WINDOW
 
@@ -250,12 +249,15 @@ SFMLRenderer* SFMLRenderer::OnRender()
 		m_Window->setView(m_view);
 		m_Window->clear(sf::Color(200, 200, 200));
 		
+
+		//DrawThickLineWithGradient({ 0, 0 }, GetWorldMousePos(), 10.0f, sf::Color::Red, sf::Color::Blue);
+
 		{
-			circuitRef.Draw();
+			//circuitRef.Draw();
 			editor.DrawUI();
 
 			ImGui::ShowDemoWindow();
-			DrawGrid({ 1000.0f,1000.0f }, { 100.0f, 100.0f }, sf::Color(164, 164, 164, 255));
+			DrawGrid({ 10000.0f,10000.0f }, { 100.0f, 100.0f }, sf::Color(164, 164, 164, 255));
 
 			drawableCircuit.Draw();
 		}
@@ -282,6 +284,8 @@ void SFMLRenderer::HandleEvents()
 
 	while (std::optional event = m_Window->pollEvent())
 	{
+		ImGui::SFML::ProcessEvent(*m_Window, *event);
+
 		if (event->is<sf::Event::Closed>())
 			m_Window->close();
 
@@ -305,7 +309,6 @@ void SFMLRenderer::HandleEvents()
 					m_view.zoom(1.05f);
 			}	
 		}
-		ImGui::SFML::ProcessEvent(*m_Window, *event);
 	}
 }
 

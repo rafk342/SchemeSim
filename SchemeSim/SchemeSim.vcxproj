@@ -162,6 +162,7 @@
   </ItemDefinitionGroup>
   <ItemGroup>
     <ClCompile Include="src\core\sim\components.cpp" />
+    <ClCompile Include="src\core\sim\drawableCircuit.cpp" />
     <ClCompile Include="src\core\sim\matrix.cpp" />
     <ClCompile Include="src\helpers\Helpers.cpp" />
     <ClCompile Include="src\core\sim\circuit.cpp" />
@@ -178,6 +179,7 @@
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="src\common\vfmt.h" />
+    <ClInclude Include="src\core\sim\drawableCircuit.h" />
     <ClInclude Include="src\core\Timer.h" />
     <ClInclude Include="src\common\types.h" />
     <ClInclude Include="src\helpers\Helpers.h" />

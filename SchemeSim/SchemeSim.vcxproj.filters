@@ -57,6 +57,9 @@
     <ClCompile Include="vendor\ImGui\imgui-SFML.cpp">
       <Filter>Исходные файлы</Filter>
     </ClCompile>
+    <ClCompile Include="src\core\sim\drawableCircuit.cpp">
+      <Filter>Исходные файлы</Filter>
+    </ClCompile>
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="src\core\SFMLRenderer.h">
@@ -1491,6 +1494,9 @@
       <Filter>Файлы заголовков</Filter>
     </ClInclude>
     <ClInclude Include="src\common\vfmt.h">
+      <Filter>Файлы заголовков</Filter>
+    </ClInclude>
+    <ClInclude Include="src\core\sim\drawableCircuit.h">
       <Filter>Файлы заголовков</Filter>
     </ClInclude>
   </ItemGroup>

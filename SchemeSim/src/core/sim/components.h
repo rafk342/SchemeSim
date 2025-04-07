@@ -103,9 +103,10 @@ public:
 	virtual void InitMatrix(CircuitMtx& mtx) { }						// Called before matrix is assembled
 	virtual void Reset() { }
 	virtual ePin* GetEpin(int num);
-	virtual u64 GetNumEpins()			{ return m_ePins.size(); }
-	virtual ElementType_e GetType()		{ return ty_Unknown; }
-	
+	virtual u64 GetNumEpins()				{ return m_ePins.size(); }
+	virtual ElementType_e GetType()			{ return ty_Unknown; }
+	virtual double GetCurrent(int pinNum = 0)	{ return 0.0; }
+
 	const char* GetTypeName();
 	void ReleaseConnectedNodes();
 };
@@ -116,16 +117,17 @@ public:
 
 class eResistor : public eElement
 {
+	friend class Resistor;
+
 	double m_Resistance;
-	double m_Current = 0.0;
 
 public:
 
 	eResistor(double resistance);
 	virtual void Stamp(CircuitMtx& mtx, eNode* GndNode, double dt) override;
 	virtual ElementType_e GetType() override { return ty_Resistor; }
+	virtual double GetCurrent(int pinNum = 0) override;
 
-	double GetCurrent();
 	double GetVoltDrop();
 	double GetResistance() { return m_Resistance; }
 	void SetResistance(double resistance) { m_Resistance = resistance; }
@@ -138,7 +140,7 @@ class ePotentiometer : public eElement
 	eResistor m_R2;
 	double m_TotalResistance;
 	double m_SliderPosition; // 0.0 - 1.0
-	eNode* m_MiddleNode; // This node here is for the case where the output pin is not connected to any node
+	eNode* m_MiddleNode; // node here is for the case if output pin is not connected to any node
 
 public:
 
@@ -164,13 +166,16 @@ public:
 };
 
 
+
 class eVoltageSource : public eElement
 {
+	friend class Battery;
+
 	double m_Amplitude;		// (for DC = volt, for AC = max volt)
 	double m_Frequency;		// (0 for DC)
 	double m_Phase;			// (0 for DC)
 	double m_Time;
-
+	double m_Current = 0.0; 
 	u64 m_eqIndex = 0;
 
 public:
@@ -183,6 +188,8 @@ public:
 	virtual void InitMatrix(CircuitMtx& mtx) override;
 	virtual ElementType_e GetType() override { return ty_VoltageSource; }
 	virtual void Reset() override { m_Time = 0.0; }
+	virtual u64 GetNumEpins() override { return 2; }
+	virtual double GetCurrent(int pinNum = 0) override;
 
 	ePin* GetPositivePin() { return &m_ePins[0]; }
 	ePin* GetNegativePin() { return &m_ePins[1]; }

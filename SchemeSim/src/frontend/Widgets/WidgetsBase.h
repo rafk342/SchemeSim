@@ -18,6 +18,7 @@ protected:
 public:
 
     WidgetBase(const std::string& path);
+	virtual ~WidgetBase() = default;
     void loadImageFromFile(const std::string& path);
     bool is_hovered();
 

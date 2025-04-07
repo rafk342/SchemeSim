@@ -4,6 +4,8 @@
 WidgetBase::WidgetBase(const std::string& path)
 	: m_sprite(m_texture)
 {
+	if (path.empty())
+		return;
     loadImageFromFile(path);
 }
 
@@ -17,12 +19,10 @@ void WidgetBase::loadImageFromFile(const std::string& path)
 
 bool WidgetBase::is_hovered()
 {
-    return m_sprite.getGlobalBounds().contains(g_SFMLRenderer.GetWorldMousePos());
+    return m_sprite.getGlobalBounds().contains(gSFMLRenderer.GetWorldMousePos());
 }
 
-sf::Texture&     WidgetBase::GetTexture()   { return m_texture; }
-sf::Sprite&      WidgetBase::GetSprite()    { return m_sprite; }
-
-void WidgetBase::SetPosition(sf::Vector2f pos) { m_sprite.setPosition(pos); }
-
-void WidgetBase::SetColor(sf::Color color) { m_sprite.setColor(color);  }
+sf::Texture&     WidgetBase::GetTexture()                   { return m_texture; }
+sf::Sprite&      WidgetBase::GetSprite()                    { return m_sprite; }
+void             WidgetBase::SetPosition(sf::Vector2f pos)  { m_sprite.setPosition(pos); }
+void             WidgetBase::SetColor(sf::Color color)      { m_sprite.setColor(color);  }

@@ -207,19 +207,21 @@ void eResistor::Stamp(CircuitMtx& mtx, eNode* GndNode, double dt)
 	}
 }
 
-
-double eResistor::GetCurrent()
+double eResistor::GetCurrent(int pinNum)
 {
 	if (m_ePins[0].IsConnectedToNode() && m_ePins[1].IsConnectedToNode())
 	{
 		double v1 = m_ePins[0].GetVoltage();
 		double v2 = m_ePins[1].GetVoltage();
-		m_Current = (v1 - v2) / m_Resistance;
-		return m_Current;
+		double current = (v1 - v2) / m_Resistance;
+		if (v1 >= v2)
+			return current;
+		else
+			return -current;
 	}
-
 	return 0.0;
 }
+
 
 double eResistor::GetVoltDrop()
 {
@@ -261,13 +263,14 @@ void ePotentiometer::Stamp(CircuitMtx& mtx, eNode* GndNode, double dt)
 }
 
 
-
 ePin* ePotentiometer::GetEpin(int num)
 {
 	if (num >= 3)
 		return nullptr;
 
-	return num == 0 ? m_R1.GetEpin(0) : num == 1 ? m_R1.GetEpin(1) : num == 2 ? m_R2.GetEpin(1) : nullptr;
+	return  num == 0 ? m_R1.GetEpin(0) : 
+			num == 1 ? m_R1.GetEpin(1) : 
+			num == 2 ? m_R2.GetEpin(1) : nullptr;
 }
 
 
@@ -355,6 +358,16 @@ void eVoltageSource::InitMatrix(CircuitMtx& mtx)
 	mtx.Resize(numNodes + 1);
 }
 
+double eVoltageSource::GetCurrent(int pinNum)
+{
+	if (pinNum == 0)
+		return m_Current;
+	else
+		return -m_Current;
+
+	return 0.0;
+}
+
 
 void eVoltageSource::Stamp(CircuitMtx& mtx, eNode* GndNode, double dt)
 {
@@ -416,6 +429,7 @@ void eVoltageSource::Stamp(CircuitMtx& mtx, eNode* GndNode, double dt)
 void eVoltageSource::Update(CircuitMtx& mtx, double dt)
 {
 	m_Time += dt;
+	m_Current = mtx.GetSolution()(m_eqIndex);
 }
 
 
@@ -889,7 +903,7 @@ eTransformer::eTransformer(double Inductance1, double Inductance2, double transf
 	, m_I2(0.0)
 {   //
  	// 0 ───┐   ┌─── 2
-	//    * ) │ (*
+	//     *) │ (*
 	// 	    ) │ ( 
 	//	    ) │ ( 
 	// 1 ───┘   └─── 3

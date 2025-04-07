@@ -7,6 +7,9 @@ CircuitMtx::CircuitMtx()
 
 void CircuitMtx::Solve()
 {
+	if (A.rows() == 0)
+		return;
+
 	x = A.colPivHouseholderQr().solve(b);
 }
 
@@ -61,11 +64,6 @@ void CircuitMtx::Resize(u64 NewSize)
 
 void CircuitMtx::Print(std::ostream& os) const
 {
-	char buffer[1024];
-	char buffer2[1024];
-	memset(buffer, 0, sizeof(buffer));
-	memset(buffer2, 0, sizeof(buffer2));
-
 	const int numWidth = 12;
 
 	int totalMatrixWidth = A.cols() * (numWidth + 1);

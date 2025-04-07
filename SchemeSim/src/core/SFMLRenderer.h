@@ -35,5 +35,5 @@ public:
     sf::Vector2f                GetWorldMousePos();
 };
 
-#define g_SFMLRenderer (*SFMLRenderer::Get())
+#define gSFMLRenderer (*SFMLRenderer::Get())
 

@@ -70,16 +70,6 @@ namespace Utils
 
 namespace math
 {
-    inline float vGetEulerAngleBetween(const sf::Vector2f& p1, const sf::Vector2f& p2)
-    {
-        return std::atan2(p2.y - p1.y, p2.x - p1.x) * 180.0f / PI;
-    }
-
-    inline float vGetLength(const sf::Vector2f& p1, const sf::Vector2f& p2)
-    {
-        return std::sqrt(std::pow(p2.x - p1.x, 2) + std::pow(p2.y - p1.y, 2));
-    }
-
     inline double NormalizeValue(double a, double b, double x)
     {
         return (x - a) / (b - a);
@@ -88,7 +78,7 @@ namespace math
     inline double mapRange(double value, double oldMin, double oldMax, double newMin, double newMax)
     {
         value = std::clamp(value, oldMin, oldMax);
-        double normalized = (value - oldMin) / (oldMax - oldMin);
+		double normalized = NormalizeValue(oldMin, oldMax, value);
         return newMin + normalized * (newMax - newMin);
     }
 

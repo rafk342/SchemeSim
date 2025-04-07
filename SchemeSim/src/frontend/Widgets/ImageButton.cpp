@@ -18,7 +18,7 @@ bool ImageButton::ButtonBehavior()
             dlDrawList::getWindow()->draw(m_sprite);
         });
   
-    if (!g_SFMLRenderer.GetSfWindow()->hasFocus())
+    if (!gSFMLRenderer.GetSfWindow()->hasFocus())
         return false;
 
     bool is_hovered_on_this_frame = is_hovered();
@@ -105,7 +105,7 @@ bool TwoStatesButton::ButtonBehavior()
             dlDrawList::getWindow()->draw(m_sprite);
         });
 
-    if (!g_SFMLRenderer.GetSfWindow()->hasFocus())
+    if (!gSFMLRenderer.GetSfWindow()->hasFocus())
         return false;
 
     bool is_hovered_on_this_frame = is_hovered();

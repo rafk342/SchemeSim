@@ -15,7 +15,7 @@ public:
 
     inline static sf::RenderWindow* getWindow()
     {
-        return g_SFMLRenderer.GetSfWindow();
+        return gSFMLRenderer.GetSfWindow();
     }
 
     inline static void DrawInvoke(const std::function<void()>& cmd)
