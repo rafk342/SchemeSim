@@ -5,7 +5,7 @@
 #include "sim/drawableCircuit.h"
 #include "imgui.h"
 #include "imgui-SFML.h"
-
+#include "implot.h"
 
 SFMLRenderer* SFMLRenderer::Create()
 {
@@ -60,8 +60,6 @@ SFMLRenderer* SFMLRenderer::Init()
 	auto mode = sf::VideoMode({ 1920, 1080 });
 	sf::ContextSettings settings;
 	settings.antiAliasingLevel = 8;
-	//settings.majorVersion = 4;
-	//settings.minorVersion = 6;
 
 	m_Window = std::make_unique<sf::RenderWindow>(mode, "Wnd", sf::Style::Default, sf::State::Windowed, settings);
 	m_Window->setFramerateLimit(240);
@@ -70,9 +68,8 @@ SFMLRenderer* SFMLRenderer::Init()
 	m_view.setCenter(sf::Vector2f(m_Window->getSize()) / 2.0f);
 	m_view.zoom(1.65);
 	m_Window->setView(m_view);
-	std::cout << std::filesystem::current_path() << std::endl;
 
-	SM_ASSERT(m_font.openFromFile("assets\\calibri.ttf"), "::SFMLRenderer() -> Failed to load font");
+	SM_ASSERT(m_font.openFromFile("assets\\calibri.ttf"), "SFMLRenderer::Init() -> Failed to load font");
 
 	SM_ASSERT(ImGui::SFML::Init(*m_Window, false), "ImGui::SFML::Init failed");
 
@@ -80,7 +77,11 @@ SFMLRenderer* SFMLRenderer::Init()
 	io.Fonts->Clear();
 	io.Fonts->AddFontFromFileTTF("assets\\calibri.ttf", 16.0f);
 	ImGui::SFML::UpdateFontTexture();
-
+	
+	ImPlot::CreateContext();
+	ImVec4* colors = ImPlot::GetStyle().Colors;
+	colors[ImPlotCol_FrameBg] = ImVec4(0.09f, 0.17f, 0.27f, 0.54f);
+	colors[ImPlotCol_AxisBgHovered] = ImVec4(0.13f, 0.18f, 0.24f, 1.00f);
 #endif
 	return this;
 }
@@ -205,10 +206,11 @@ SFMLRenderer* SFMLRenderer::OnRender()
 	Circuit circuit;
 	DrawableCircuit drawableCircuit(circuit);
 	CircuitEditor editor(drawableCircuit);
+	Simulation::Init(&circuit);
 
 	Timer timer;
 
-	circuit.Test3();
+	Circuit::ResultsType results = circuit.Test2(10);
 	circuit.Reset();
 	//std::cout << "-------------------\n";
 	//circuit.Test2();
@@ -242,6 +244,8 @@ SFMLRenderer* SFMLRenderer::OnRender()
 		m_DeltaMouse = CurrentMousePos - PrevMousePos;
 		PrevMousePos = CurrentMousePos;
 
+		Simulation::Simulate(dt.asSeconds());
+
 		HandleEvents();
 		
 		ImGui::SFML::Update(*m_Window, dt);
@@ -250,16 +254,16 @@ SFMLRenderer* SFMLRenderer::OnRender()
 		m_Window->clear(sf::Color(200, 200, 200));
 		
 
-		//DrawThickLineWithGradient({ 0, 0 }, GetWorldMousePos(), 10.0f, sf::Color::Red, sf::Color::Blue);
-
 		{
 			//circuitRef.Draw();
 			editor.DrawUI();
 
 			ImGui::ShowDemoWindow();
+			ImPlot::ShowDemoWindow();
+
 			DrawGrid({ 10000.0f,10000.0f }, { 100.0f, 100.0f }, sf::Color(164, 164, 164, 255));
 
-			drawableCircuit.Draw();
+			drawableCircuit.Draw(dt.asSeconds());
 		}
 
 		ImGui::SFML::Render(*m_Window);
@@ -268,7 +272,9 @@ SFMLRenderer* SFMLRenderer::OnRender()
 	}
 #endif
 
+	ImPlot::DestroyContext();
 	ImGui::SFML::Shutdown();
+	drawableCircuit.Destroy();
 
 	return this;
 }
@@ -277,17 +283,20 @@ SFMLRenderer* SFMLRenderer::OnRender()
 void SFMLRenderer::HandleEvents()
 {
 	if (m_Window->hasFocus())
-	{
 		if (sf::Mouse::isButtonPressed(sf::Mouse::Button::Right))
-			m_view.move(-(m_DeltaMouse));
-	}
+			if (!ImGui::GetIO().WantCaptureMouse)
+				m_view.move(-(m_DeltaMouse));
+
 
 	while (std::optional event = m_Window->pollEvent())
 	{
 		ImGui::SFML::ProcessEvent(*m_Window, *event);
 
 		if (event->is<sf::Event::Closed>())
+		{
 			m_Window->close();
+			continue;
+		}
 
 		if (auto* resized = event->getIf<sf::Event::Resized>())
 		{
@@ -300,7 +309,8 @@ void SFMLRenderer::HandleEvents()
 		
 		if (m_Window->hasFocus())
 		{
-			if (auto* scrolledEvent = event->getIf<sf::Event::MouseWheelScrolled>())
+			auto* scrolledEvent = event->getIf<sf::Event::MouseWheelScrolled>();
+			if (scrolledEvent && !ImGui::GetIO().WantCaptureMouse)
 			{
 				if (scrolledEvent->delta > 0)
 					m_view.zoom(0.95);
@@ -317,7 +327,7 @@ void SFMLRenderer::HandleEvents()
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
 
-sf::View*			SFMLRenderer::GEtSfView()		{ return &m_view;}
+sf::View*			SFMLRenderer::GetSfView()		{ return &m_view;}
 sf::RenderWindow*	SFMLRenderer::GetSfWindow()		{ return m_Window.get();}
 sf::Font&			SFMLRenderer::GetFont()			{ return m_font;}
 sf::Vector2f		SFMLRenderer::GetDeltaMouse()	{ return m_DeltaMouse; }

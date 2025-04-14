@@ -9,6 +9,7 @@
 #include <unordered_set>
 #include <deque>
 #include <queue>
+#include <thread>
 
 #include "components.h"
 #include "imgui.h"
@@ -33,9 +34,6 @@ protected:
 	CircuitMtx								m_Matrix;
 	eNode*									m_GroundNode = nullptr;
 
-	double									m_CurrTime = 0.0;
-
-
 	u64										GetNodeMtxIndex							(eNode* node);
 
 public:
@@ -55,7 +53,7 @@ public:
 	void									RemoveNode(eNode* node);
 	void									RemoveElement(eElement* element);
 	void									Connect(ePin* pin, eNode* node);
-	void									StampElements();
+	void									StampElements(double dt);
 	void									RebuildMatrix();
 	eNode*									LookupGroundNode();
 	void									AdjustVoltages(eNode* ToDesiredGround);
@@ -74,6 +72,7 @@ public:
 	ResultsType								Simulate(double totalTime, double dt);
 	
 	void									Test1();
+	ResultsType								Test2(double totalTime= 0.25);
 	ResultsType								Test3(double totalTime= 0.25);
 	ResultsType								Test4(double totalTime = 0.25);
 	ResultsType								Test5(double totalTime = 0.25);
@@ -83,5 +82,44 @@ public:
 
 
 	std::vector<UPtrElementTy>& 			GetElements()							{ return m_Elements; }
+	auto& 									GetNodes()								{ return m_Nodes; }
 	CircuitMtx& 							GetMatrix()								{ return m_Matrix; }
+};
+
+class DrawableCircuit;
+class Oscilloscope;
+
+
+
+enum SimState
+{
+	SIM_STOPPED,
+	SIM_RUNNING,
+	SIM_ON_START,
+	SIM_PAUSED,
+};
+
+class Simulation
+{
+	static inline Circuit*		sm_Circuit = nullptr;
+	static inline f128			sm_CircTime = 0.0;
+	static inline f128			sm_RealTime = 0.0;
+	static inline SimState 		sm_SimState = SIM_PAUSED;
+	static inline float			sm_SimSpeed = 0.3f;
+
+	static inline std::unordered_map<eElement*, std::weak_ptr<Oscilloscope>> sm_ElemToOscilloscope;
+
+public:
+
+	static void		Init(Circuit* circuit)								{ sm_Circuit = circuit; }
+	static void		Shutdown()											{ sm_Circuit = nullptr; }
+	static void		Simulate(double frameTime, double step = 0.00005);
+	static void		UpdateOscilloscopes(f128 t);
+	static SimState	GetState() 											{ return sm_SimState; }
+	static void		SetState(SimState state)							{ sm_SimState = state; }
+	static f128&	CircTime() 											{ return sm_CircTime; }
+	static float&	SimSpeed() 											{ return sm_SimSpeed; }
+	
+	static void		RegisterOscilloscope(eElement* element, std::shared_ptr<Oscilloscope> oscilloscope);
+	static std::shared_ptr<Oscilloscope> GetOscilloscope(eElement* element);
 };

@@ -176,6 +176,9 @@
     <ClCompile Include="vendor\ImGui\imgui_draw.cpp" />
     <ClCompile Include="vendor\ImGui\imgui_tables.cpp" />
     <ClCompile Include="vendor\ImGui\imgui_widgets.cpp" />
+    <ClCompile Include="vendor\ImGui\implot.cpp" />
+    <ClCompile Include="vendor\ImGui\implot_demo.cpp" />
+    <ClCompile Include="vendor\ImGui\implot_items.cpp" />
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="src\common\vfmt.h" />
@@ -551,6 +554,8 @@
     <ClInclude Include="vendor\ImGui\imgui-SFML_export.h" />
     <ClInclude Include="vendor\ImGui\imgui.h" />
     <ClInclude Include="vendor\ImGui\imgui_internal.h" />
+    <ClInclude Include="vendor\ImGui\implot.h" />
+    <ClInclude Include="vendor\ImGui\implot_internal.h" />
     <ClInclude Include="vendor\ImGui\imstb_rectpack.h" />
     <ClInclude Include="vendor\ImGui\imstb_textedit.h" />
     <ClInclude Include="vendor\ImGui\imstb_truetype.h" />

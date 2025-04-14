@@ -5,11 +5,13 @@
 
 #include "core/SFMLRenderer.h"
 #include <windows.h>
-#include <stacktrace>
 #include <format>
+#include "helpers/Helpers.h"
 
 //void* operator new(size_t sz) noexcept
 //{
+//	//Utils::printStackTrace();
+// 
 //	static size_t count = 0;
 //	count++;
 //	std::cout << " i : " << count << " alloc : " << sz << std::endl;
@@ -51,22 +53,22 @@ inline const char* GetExceptionName(DWORD code)
 		case EXCEPTION_INVALID_DISPOSITION       : return "EXCEPTION_INVALID_DISPOSITION";
 		case EXCEPTION_GUARD_PAGE                : return "EXCEPTION_GUARD_PAGE";
 		case EXCEPTION_INVALID_HANDLE            : return "EXCEPTION_INVALID_HANDLE";
-		default:
-			return "UNKNOWN EXCEPTION";
+		default									 : return "UNKNOWN EXCEPTION";
 	}
 }
 
 inline LONG WINAPI exception_filter(EXCEPTION_POINTERS* info)
 {
-	std::string msg = std::format("Exception caught: {} (0x{:08X})\n", GetExceptionName(info->ExceptionRecord->ExceptionCode), info->ExceptionRecord->ExceptionCode);
-	msg += "Stacktrace:\n";
+	Utils::printStackTrace();
 
-	for (auto& frame : std::stacktrace::current())
+	int result = MessageBoxA(nullptr, std::format("Code (0x{:08X}) -> {}\n", info->ExceptionRecord->ExceptionCode, GetExceptionName(info->ExceptionRecord->ExceptionCode)).c_str(), "Exception", MB_ICONERROR | MB_OKCANCEL);
+
+	if (result == IDCANCEL)
 	{
-		msg += std::format("\t\t {:<80}| Line: {:<15}| File: {:<15}\n", frame.description(), frame.source_line(), frame.source_file());
+		TerminateProcess(HANDLE(GetCurrentProcess()), 0);
+		return EXCEPTION_CONTINUE_SEARCH;
 	}
 
-	MessageBoxA(nullptr, msg.c_str(), "Exception", MB_ICONERROR | MB_OK);
 	__debugbreak();
 	return EXCEPTION_EXECUTE_HANDLER;
 }

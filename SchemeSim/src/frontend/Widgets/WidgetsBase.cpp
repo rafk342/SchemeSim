@@ -17,9 +17,14 @@ void WidgetBase::loadImageFromFile(const std::string& path)
     m_sprite.setTexture(m_texture, true);
 }
 
-bool WidgetBase::is_hovered()
+bool WidgetBase::IsHovered()
 {
-    return m_sprite.getGlobalBounds().contains(gSFMLRenderer.GetWorldMousePos());
+	return IsHovered(m_sprite);
+}
+
+bool WidgetBase::IsHovered(sf::Sprite& sprite)
+{
+	return sprite.getGlobalBounds().contains(gSFMLRenderer.GetWorldMousePos());
 }
 
 sf::Texture&     WidgetBase::GetTexture()                   { return m_texture; }

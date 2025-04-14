@@ -17,15 +17,17 @@ protected:
 
 public:
 
+    static bool IsHovered(sf::Sprite& sprite);
+    
     WidgetBase(const std::string& path);
 	virtual ~WidgetBase() = default;
-    void loadImageFromFile(const std::string& path);
-    bool is_hovered();
-
-    sf::Texture&    GetTexture();
-    sf::Sprite&     GetSprite();
+ 
+    void                    loadImageFromFile(const std::string& path);
+    void                    SetColor(sf::Color color);
+    sf::Texture&            GetTexture();
+    sf::Sprite&             GetSprite();
    
-    void SetPosition(sf::Vector2f pos);
-    void SetColor(sf::Color color);
-	sf::Vector2f GetPosition() { return m_sprite.getPosition(); }
+    virtual bool            IsHovered();
+    virtual void            SetPosition(sf::Vector2f pos);
+	virtual sf::Vector2f    GetPosition() { return m_sprite.getPosition(); }
 };

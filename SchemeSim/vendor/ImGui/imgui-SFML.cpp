@@ -313,6 +313,7 @@ bool Init(sf::Window& window, const sf::Vector2f& displaySize, bool loadDefaultF
     io.BackendFlags |= ImGuiBackendFlags_HasGamepad;
     io.BackendFlags |= ImGuiBackendFlags_HasMouseCursors;
     io.BackendFlags |= ImGuiBackendFlags_HasSetMousePos;
+    //io.BackendFlags |= ImGuiBackendFlags_RendererHasVtxOffset;
     io.BackendPlatformName = "imgui_impl_sfml";
 
     s_currWindowCtx->joystickId = getConnectedJoystickId();

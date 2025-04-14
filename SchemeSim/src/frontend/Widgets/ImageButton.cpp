@@ -21,7 +21,7 @@ bool ImageButton::ButtonBehavior()
     if (!gSFMLRenderer.GetSfWindow()->hasFocus())
         return false;
 
-    bool is_hovered_on_this_frame = is_hovered();
+    bool is_hovered_on_this_frame = IsHovered();
 
     if (is_hovered_on_this_frame) {
         m_sprite.setColor(hovered_color);
@@ -108,7 +108,7 @@ bool TwoStatesButton::ButtonBehavior()
     if (!gSFMLRenderer.GetSfWindow()->hasFocus())
         return false;
 
-    bool is_hovered_on_this_frame = is_hovered();
+    bool is_hovered_on_this_frame = IsHovered();
 
     if (is_hovered_on_this_frame) {
         m_sprite.setColor(hovered_color);

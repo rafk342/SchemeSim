@@ -114,6 +114,7 @@ const char* eElement::GetTypeName()
 	case ty_Potentiometer:	return "Potentiometer";
 	case ty_Button:			return "Button";
 	case ty_Transformer:    return "Transformer";
+	case ty_RelayContact:   return "Relay Contact";
 	default:				return "Unknown";
 	}
 }
@@ -207,17 +208,26 @@ void eResistor::Stamp(CircuitMtx& mtx, eNode* GndNode, double dt)
 	}
 }
 
-double eResistor::GetCurrent(int pinNum)
+
+double eResistor::GetCurrent()
 {
 	if (m_ePins[0].IsConnectedToNode() && m_ePins[1].IsConnectedToNode())
 	{
 		double v1 = m_ePins[0].GetVoltage();
 		double v2 = m_ePins[1].GetVoltage();
-		double current = (v1 - v2) / m_Resistance;
-		if (v1 >= v2)
-			return current;
-		else
-			return -current;
+		double vd = v1 - v2;
+
+		double current = vd / m_Resistance;
+		
+		//if (IsAlmostEqual(v1, v2, 0.0001))
+		//	return current;
+
+		//if (vd > 0.0)
+		//	return current;
+		//else
+		//	return -current;
+
+		return current;
 	}
 	return 0.0;
 }
@@ -245,14 +255,22 @@ double eResistor::GetVoltDrop()
 ePotentiometer::ePotentiometer(Circuit& circuit, double TotalResistance, double SliderPosition)
 	: m_R1(1.0)
 	, m_R2(1.0)
+	, m_RWire(1e-6)
+	, m_Circuit(&circuit)
 {
 	m_MiddleNode = circuit.CreateNode(); // Circuit owns and manages all the nodes
 
 	m_R1.GetEpin(1)->ConnectToNode(m_MiddleNode);
 	m_R2.GetEpin(0)->ConnectToNode(m_MiddleNode);
+	m_RWire.GetEpin(0)->ConnectToNode(m_MiddleNode);
 
 	SetTotalResistance(TotalResistance);
 	SetSliderPosition(SliderPosition);
+}
+
+ePotentiometer::~ePotentiometer()
+{
+	m_Circuit->RemoveNode(m_MiddleNode);
 }
 
 
@@ -260,6 +278,7 @@ void ePotentiometer::Stamp(CircuitMtx& mtx, eNode* GndNode, double dt)
 {
 	m_R1.Stamp(mtx, GndNode, dt);
 	m_R2.Stamp(mtx, GndNode, dt);
+	m_RWire.Stamp(mtx, GndNode, dt);
 }
 
 
@@ -270,7 +289,7 @@ ePin* ePotentiometer::GetEpin(int num)
 
 	return  num == 0 ? m_R1.GetEpin(0) : 
 			num == 1 ? m_R1.GetEpin(1) : 
-			num == 2 ? m_R2.GetEpin(1) : nullptr;
+			num == 2 ? m_RWire.GetEpin(1) : nullptr;
 }
 
 
@@ -292,9 +311,10 @@ void ePotentiometer::SetSliderPosition(double position)
 
 double	ePotentiometer::GetSliderPosition() const	{ return m_SliderPosition; }
 double	ePotentiometer::GetTotalResistance() const	{ return m_TotalResistance; }
+
 ePin*	ePotentiometer::GetLeftPin()				{ return m_R1.GetEpin(0); }
 ePin*	ePotentiometer::GetRightPin()				{ return m_R2.GetEpin(1); }
-eNode*	ePotentiometer::GetOutputNode()				{ return m_MiddleNode; }
+ePin*	ePotentiometer::GetMiddlePin()				{ return m_RWire.GetEpin(1); }
 
 
 void ePotentiometer::SetTotalResistance(double resistance)
@@ -302,20 +322,6 @@ void ePotentiometer::SetTotalResistance(double resistance)
 	m_TotalResistance = resistance;
 	m_R1.SetResistance(m_TotalResistance * m_SliderPosition);
 	m_R2.SetResistance(m_TotalResistance * (1.0 - m_SliderPosition));
-}
-
-
-void ePotentiometer::ConnectOutputPinToNode(eNode* node)
-{
-	m_R1.GetEpin(1)->ConnectToNode(node);
-	m_R2.GetEpin(0)->ConnectToNode(node);
-}
-
-
-void ePotentiometer::ReleaseNodeFromOutputPin()
-{
-	m_R1.GetEpin(1)->ConnectToNode(m_MiddleNode);
-	m_R2.GetEpin(0)->ConnectToNode(m_MiddleNode);
 }
 
 
@@ -358,13 +364,19 @@ void eVoltageSource::InitMatrix(CircuitMtx& mtx)
 	mtx.Resize(numNodes + 1);
 }
 
-double eVoltageSource::GetCurrent(int pinNum)
+double eVoltageSource::GetCurrent()
 {
-	if (pinNum == 0)
-		return m_Current;
-	else
-		return -m_Current;
+	return m_Current;
+}
 
+double eVoltageSource::GetVoltDrop()
+{
+	if (m_ePins[0].IsConnectedToNode() && m_ePins[1].IsConnectedToNode())
+	{
+		double v1 = GetPositivePin()->GetVoltage();
+		double v2 = GetNegativePin()->GetVoltage();
+		return v1 - v2;
+	}
 	return 0.0;
 }
 
@@ -513,6 +525,20 @@ void eCapacitor::Update(CircuitMtx& mtx, double dt)
 		double v2 = m_ePins[1].GetVoltage();
 		m_PrevVoltage = v1 - v2;
 	}
+}
+
+double eCapacitor::GetCurrent()
+{
+	if (m_ePins[0].IsConnectedToNode() && m_ePins[1].IsConnectedToNode())
+	{
+		
+	}
+	return 0.0;
+}
+
+double eCapacitor::GetVoltDrop()
+{
+	return 0.0;
 }
 
 
@@ -681,14 +707,16 @@ void eDiode::Stamp(CircuitMtx& mtx, eNode* GndNode, double dt)
 void eDiode::Update(CircuitMtx& mtx, double dt)
 {
 	double Vd = GetVoltDrop();
-	Vd = LimitVoltageStep(Vd, m_LastVd);
+	Vd = LimitVoltStep(Vd, m_LastVd);
 	m_LastVd = Vd;
 	double Gmin = m_Is * 0.01; 
+
 
 	if (Vd >= 0 || m_ZVoltage == 0)  	// regular diode or forward-biased zener
 	{
 		double expVd = std::exp(Vd * m_Vdcoef);
-		m_G = m_Vdcoef * m_Is * expVd + Gmin;
+		//m_G = m_Vdcoef * m_Is * expVd + Gmin;
+		m_G = 0.7 * m_G + 0.3 * (m_Vdcoef * m_Is * expVd + Gmin);
 		m_Ieq = (expVd - 1) * m_Is - m_G * Vd;
 	}
 	else
@@ -734,7 +762,7 @@ void eDiode::SetupCriticalVoltages()
 }
 
 
-double eDiode::LimitVoltageStep(double Vnew, double Vold)
+double eDiode::LimitVoltStep(double Vnew, double Vold)
 {
 	double arg;
 
@@ -998,62 +1026,154 @@ void eTransformer::Update(CircuitMtx& mtx, double dt)
 }
 
 
-//////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-// 											eSwitchBase
-
-
-eSwitchBase::~eSwitchBase()
-{
-	m_switches.clear();
-}
-
-
-void eSwitchBase::Stamp(CircuitMtx& mtx, eNode* GndNode, double dt)
-{
-	for (eResistor& sw : m_switches)
-	{
-		if (sw.GetEpin(0)->IsConnectedToNode() && sw.GetEpin(1)->IsConnectedToNode())
-			sw.Stamp(mtx, GndNode, dt);
-	}
-}
-
-
-//////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-// 											eButton
-
-
-eButton::eButton(NormalState_e NormState)
+eButton::eButton(NormalState NormState)
+	: m_R(1.0)
 {
 	m_NormState = NormState;
-	SetupSwitches();
+	SetState(ButtonState::Released);
+}
+
+void eButton::Stamp(CircuitMtx& mtx, eNode* GndNode, double dt)
+{
+	m_R.Stamp(mtx, GndNode, dt);
+}
+
+void eButton::Update(CircuitMtx& mtx, double dt)
+{
+}
+
+void eButton::SetNormalState(NormalState state)
+{
+	m_NormState = state;
+	SetState(m_State);
 }
 
 
-void eButton::SetupSwitches()
+void eButton::SetState(ButtonState state)
 {
-	m_switches.push_back(eResistor(m_OnResistance));
-	SetState(ButtonState_e::Released);
-}
-
-
-void eButton::SetState(int state)
-{
-	m_State = ButtonState_e(state);
+	m_State = state;
 
 	if (m_NormState == NormalOpen)
-		m_switches[0].SetResistance((state == ButtonState_e::Pressed) ? m_OnResistance : m_OffResistance);
+		m_R.SetResistance((state == ButtonState::Pressed) ? OnResistance : OffResistance);
 	else
-		m_switches[0].SetResistance((state == ButtonState_e::Pressed) ? m_OffResistance : m_OnResistance);
+		m_R.SetResistance((state == ButtonState::Pressed) ? OffResistance : OnResistance);
 }
 
 
 ePin* eButton::GetEpin(int num)
 {
-	if (num >= m_switches.size() * 2)
-		return nullptr;
+	return (num == 0) ? m_R.GetEpin(0) : m_R.GetEpin(1);
+}
 
-	return m_switches[0].GetEpin(num);
+
+eRelayContactsGroup::eRelayContactsGroup(Circuit& circuit)
+	: m_R11(1.0f)
+	, m_R12(1.0f)
+	, m_R13(1.0f)
+	, m_MiddleNode(circuit.CreateNode())
+	, m_State(n11_n12)
+	, m_Circuit(&circuit)
+{
+	m_R11.GetEpin(1)->ConnectToNode(m_MiddleNode);
+	m_R12.GetEpin(0)->ConnectToNode(m_MiddleNode);
+	m_R13.GetEpin(0)->ConnectToNode(m_MiddleNode);
+	SetState(m_State);
+}
+
+
+eRelayContactsGroup::~eRelayContactsGroup()
+{
+	m_Circuit->RemoveNode(m_MiddleNode);
+}
+
+
+void eRelayContactsGroup::Stamp(CircuitMtx& mtx, eNode* GndNode, double dt)
+{
+	m_R11.Stamp(mtx, GndNode, dt);
+	m_R12.Stamp(mtx, GndNode, dt);
+	m_R13.Stamp(mtx, GndNode, dt);
+}
+
+
+ePin* eRelayContactsGroup::GetEpin(int num)
+{
+	ePin* pin = nullptr;
+	switch (RelayContact(num))
+	{
+	case eRelayContactsGroup::N11: pin = m_R11.GetEpin(0); break;
+	case eRelayContactsGroup::N12: pin = m_R12.GetEpin(1); break;
+	case eRelayContactsGroup::N13: pin = m_R13.GetEpin(1); break;
+	default:
+		break;
+	}
+	return pin;
+}
+
+
+eRelayContactsGroup::State eRelayContactsGroup::GetState()
+{ 
+	return m_State; 
+}
+
+void eRelayContactsGroup::SetCoilName(const std::string& name)
+{
+	m_CoilName = name;
+	m_HashName = std::hash<std::string>{}(name);
+}
+
+void eRelayContactsGroup::SetState(State state)
+{
+	if (state == n11_n12)
+	{
+		m_R11.SetResistance(minResistance);
+		m_R12.SetResistance(minResistance);
+		m_R13.SetResistance(maxResistance);
+	}
+	else
+	{
+		m_R11.SetResistance(minResistance);
+		m_R12.SetResistance(maxResistance);
+		m_R13.SetResistance(minResistance);
+	}
 }
 
 
 
+eCoil::eCoil(double Inductance, double ReleaseDelay)
+	: eInductor(Inductance)
+	, m_ReleaseDelay(ReleaseDelay)
+{ }
+
+
+void eCoil::Update(CircuitMtx& mtx, double dt)
+{
+	ePin& pin0 = m_ePins[0];
+	ePin& pin1 = m_ePins[1];
+
+	if (!pin0.IsConnectedToNode() && !pin1.IsConnectedToNode())
+		return;
+
+	double current = mtx.GetSolution()(m_CurrenIndex);		
+	m_prevCurrent = current;
+
+	if (std::abs(current) > m_CurrThreshold)
+	{
+		m_IsActive = true;
+		m_InactiveCoilTimer = 0.0;
+	}
+	else if (m_IsActive)
+	{
+		m_InactiveCoilTimer += dt;
+		if (m_InactiveCoilTimer > m_ReleaseDelay)
+		{
+			m_IsActive = false;
+			m_InactiveCoilTimer = 0.0;
+		}
+	}
+}
+
+void eCoil::SetName(const std::string& name)
+{
+	m_Name = name;
+	m_HashName = std::hash<std::string>{}(name);
+}

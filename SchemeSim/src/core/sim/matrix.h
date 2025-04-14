@@ -15,16 +15,16 @@ class CircuitMtx
 
 public:
 
-									CircuitMtx						();
-	void							Solve							();	// Ax = b
-	double							GetVoltage						(int node) const;
-	Eigen::MatrixXd&				GetMatrix						();
-	Eigen::VectorXd&				GetVector						();
-	Eigen::VectorXd&				GetSolution						();
-	void							Clear							();
-	void							Reset							();
-	void							Resize							(u64 NewSize);
-	u64								GetNumNodes						() const;
-	void							Print							(std::ostream& os) const;
+									CircuitMtx();
+	void							Solve();	// Ax = b
+	double							GetVoltage(int node) const;
+	Eigen::MatrixXd&				GetMatrix();
+	Eigen::VectorXd&				GetVector();
+	Eigen::VectorXd&				GetSolution();
+	void							Clear();
+	void							Reset();
+	void							Resize(u64 NewSize);
+	u64								GetNumNodes() const;
+	void							Print(std::ostream& os) const;
 };
 

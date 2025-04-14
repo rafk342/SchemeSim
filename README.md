@@ -1,0 +1,2 @@
+REQUIREMENTS: 
+	vcpkg install scnlib

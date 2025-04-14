@@ -29,7 +29,7 @@ public:
     SFMLRenderer*               OnRender();
     
     sf::RenderWindow*           GetSfWindow();
-    sf::View*                   GEtSfView();
+    sf::View*                   GetSfView();
     sf::Font&                   GetFont();
     sf::Vector2f                GetDeltaMouse();
     sf::Vector2f                GetWorldMousePos();
