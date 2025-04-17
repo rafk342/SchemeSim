@@ -1,4 +1,4 @@
-<?xml version="1.0" encoding="utf-8"?>
+﻿<?xml version="1.0" encoding="utf-8"?>
 <Project DefaultTargets="Build" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
   <ItemGroup Label="ProjectConfigurations">
     <ProjectConfiguration Include="Debug|Win32">
@@ -162,8 +162,10 @@
   </ItemDefinitionGroup>
   <ItemGroup>
     <ClCompile Include="src\core\sim\components.cpp" />
-    <ClCompile Include="src\core\sim\drawableCircuit.cpp" />
+    <ClCompile Include="src\frontend\drawableCircuit.cpp" />
     <ClCompile Include="src\core\sim\matrix.cpp" />
+    <ClCompile Include="src\frontend\drawableComponents.cpp" />
+    <ClCompile Include="src\frontend\parser.cpp" />
     <ClCompile Include="src\helpers\Helpers.cpp" />
     <ClCompile Include="src\core\sim\circuit.cpp" />
     <ClCompile Include="src\frontend\Widgets\ImageButton.cpp" />
@@ -182,9 +184,11 @@
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="src\common\vfmt.h" />
-    <ClInclude Include="src\core\sim\drawableCircuit.h" />
+    <ClInclude Include="src\frontend\drawableCircuit.h" />
     <ClInclude Include="src\core\Timer.h" />
     <ClInclude Include="src\common\types.h" />
+    <ClInclude Include="src\frontend\drawableComponents.h" />
+    <ClInclude Include="src\frontend\parser.h" />
     <ClInclude Include="src\helpers\Helpers.h" />
     <ClInclude Include="src\core\sim\components.h" />
     <ClInclude Include="src\core\sim\matrix.h" />

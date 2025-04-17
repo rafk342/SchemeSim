@@ -13,4 +13,3 @@ typedef uint8_t	u8;
 
 typedef float f32;
 typedef double f64;
-typedef long double f128;

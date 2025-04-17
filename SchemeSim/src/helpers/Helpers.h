@@ -20,8 +20,6 @@ namespace Utils
     void printStackTrace();
 }
 
-
-
 namespace math
 {
     inline double NormalizeValue(double a, double b, double x)
@@ -36,19 +34,19 @@ namespace math
         return newMin + normalized * (newMax - newMin);
     }
 
-    inline double easeInOutQuad(double t)
+    inline double easeInOutQuad(double x)
     {
-        return t < 0.5 ? 2 * t * t : -1 + (4 - 2 * t) * t;
+        return x < 0.5 ? 8.0 * std::pow(x, 4.0) : 1.0 - std::pow(-2.0 * x + 2.0, 4.0) / 2.0;
     }
 
     inline double easeInOutSine(double t)
     {
-        return (1 - std::cos(t * PI)) / 2;
+        return (1.0 - std::cos(t * PI)) / 2.0;
     }
 
-    inline double easeInOutCubic(double t)
+    inline double easeInOutCubic(double x) 
     {
-        return t < 0.5 ? 4 * t * t * t : 1 + (--t) * (2 * (--t)) * (2 * t);
+        return x < 0.5 ? 4.0 * std::pow(x, 3.0) : 1.0 - std::pow(-2.0 * x + 2.0, 3.0) / 2.0;
     }
 
     inline double sign(double x)

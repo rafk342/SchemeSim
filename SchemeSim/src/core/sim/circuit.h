@@ -102,8 +102,8 @@ enum SimState
 class Simulation
 {
 	static inline Circuit*		sm_Circuit = nullptr;
-	static inline f128			sm_CircTime = 0.0;
-	static inline f128			sm_RealTime = 0.0;
+	static inline double		sm_CircTime = 0.0;
+	static inline double		sm_RealTime = 0.0;
 	static inline SimState 		sm_SimState = SIM_PAUSED;
 	static inline float			sm_SimSpeed = 0.3f;
 
@@ -113,11 +113,11 @@ public:
 
 	static void		Init(Circuit* circuit)								{ sm_Circuit = circuit; }
 	static void		Shutdown()											{ sm_Circuit = nullptr; }
-	static void		Simulate(double frameTime, double step = 0.00005);
-	static void		UpdateOscilloscopes(f128 t);
+	static void		Simulate(double frameTime, const double step = 0.00005);
+	static void		UpdateOscilloscopes(double t);
 	static SimState	GetState() 											{ return sm_SimState; }
 	static void		SetState(SimState state)							{ sm_SimState = state; }
-	static f128&	CircTime() 											{ return sm_CircTime; }
+	static double&	CircTime() 											{ return sm_CircTime; }
 	static float&	SimSpeed() 											{ return sm_SimSpeed; }
 	
 	static void		RegisterOscilloscope(eElement* element, std::shared_ptr<Oscilloscope> oscilloscope);

@@ -2,7 +2,7 @@
 #include "core/DrawList.h"
 #include <chrono>
 #include "Timer.h"
-#include "sim/drawableCircuit.h"
+#include "frontend/drawableCircuit.h"
 #include "imgui.h"
 #include "imgui-SFML.h"
 #include "implot.h"
@@ -82,6 +82,8 @@ SFMLRenderer* SFMLRenderer::Init()
 	ImVec4* colors = ImPlot::GetStyle().Colors;
 	colors[ImPlotCol_FrameBg] = ImVec4(0.09f, 0.17f, 0.27f, 0.54f);
 	colors[ImPlotCol_AxisBgHovered] = ImVec4(0.13f, 0.18f, 0.24f, 1.00f);
+	colors[ImPlotCol_AxisBgActive] = ImVec4(0.14f, 0.23f, 0.31f, 1.00f);
+
 #endif
 	return this;
 }

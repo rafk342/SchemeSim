@@ -1,5 +1,5 @@
-﻿#include "circuit.h"
-#include "drawableCircuit.h"
+﻿//#include "drawableCircuit.h"
+#include "frontend/drawableCircuit.h"
 
 void Circuit::Reset()
 {
@@ -248,7 +248,7 @@ Circuit::ResultsType Circuit::Simulate(double totalTime, double dt)
 	file << "Total Time: " << totalTime << '\n';
 	file << "Dt: " << dt << '\n';
 
-	f128 Time = 0.0f;
+	double Time = 0.0f;
 
 	for (u64 i = 0; i < steps; ++i)
 	{
@@ -604,6 +604,7 @@ Circuit::ResultsType Circuit::Test7(double totalTime)
 	//FinalizeMatrixSize();
 	//double dt = 0.00005;
 	//return Simulate(totalTime, dt);
+	return ResultsType();
 }
 
 
@@ -647,7 +648,7 @@ Circuit::ResultsType Circuit::Test8(double totalTime)
 //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
 
-void Simulation::Simulate(double frameTime, double step)
+void Simulation::Simulate(double frameTime, const double step)
 {
 	if (!sm_Circuit)
 		return;
@@ -681,7 +682,7 @@ void Simulation::Simulate(double frameTime, double step)
 		NumSteps = 1;
 
 	double startTime = sm_CircTime;
-	sm_CircTime += step * sm_SimSpeed * NumSteps;
+	sm_CircTime += NumSteps * step;
 
 	if (sm_Circuit->GetElements().size() == 0)
 		return;
@@ -701,14 +702,13 @@ void Simulation::Simulate(double frameTime, double step)
 
 	for (size_t i = 0; i < NumSteps; i++)
 	{
-		f128 StepTime = startTime + step * i;
+		double tickTime = startTime + step * i;
 
 		sm_Circuit->GetMatrix().Clear();
 		sm_Circuit->StampElements(step);
 		sm_Circuit->Solve();
 		sm_Circuit->UpdateElements(step);
-
-		UpdateOscilloscopes(StepTime);
+		UpdateOscilloscopes(tickTime);
 
 #if LOG_DATA
 		file << std::format("Step: {}\n", i);
@@ -721,12 +721,16 @@ void Simulation::Simulate(double frameTime, double step)
 		}
 #endif
 	}
+
 }
 
+template<typename T, size_t size>
+using stack_unordered_set = std::unordered_set<T, std::hash<T>, std::equal_to<T>, hmcgr::StackFirstFitAllocator<T, size>>;
 
-void Simulation::UpdateOscilloscopes(f128 t)
+
+void Simulation::UpdateOscilloscopes(double t)
 {
-	std::unordered_set<eElement*, std::hash<eElement*>, std::equal_to<eElement*>, hmcgr::StackFirstFitAllocator<eElement*, 500>> existingElements;
+	stack_unordered_set<eElement*, 300> existingElements;
 	for (auto& elem : sm_Circuit->GetElements())
 	{
 		existingElements.insert(elem.get());
@@ -754,7 +758,8 @@ void Simulation::RegisterOscilloscope(eElement* element, std::shared_ptr<Oscillo
 
 std::shared_ptr<Oscilloscope> Simulation::GetOscilloscope(eElement* element)
 {
-	if (auto it = sm_ElemToOscilloscope.find(element); it != sm_ElemToOscilloscope.end())
+	auto it = sm_ElemToOscilloscope.find(element);
+	if (it != sm_ElemToOscilloscope.end())
 	{
 		if (auto osc = it->second.lock())
 			return osc;

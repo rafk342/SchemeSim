@@ -81,6 +81,7 @@ enum ElementType_e : u8
 	ty_Coil,
 	ty_Button,
 	ty_Transformer,
+	ty_DiodeBridge,
 	ty_Unknown = 255,
 };
 
@@ -106,7 +107,7 @@ public:
 	virtual ePin* GetEpin(int num);
 	virtual u64 GetNumEpins()					{ return m_ePins.size(); }
 	virtual ElementType_e GetType()				{ return ty_Unknown; }
-	virtual double GetCurrent()	{ return 0.0; }
+	virtual double GetCurrent()					{ return 0.0; }
 	virtual double GetVoltDrop()				{ return 0.0; }
 
 	const char* GetTypeName();
@@ -211,14 +212,14 @@ class eCapacitor : public eElement
 	friend class Capacitor;
 	double m_Capacitance;			// C, F
 	double m_PrevVoltage = 0.0;
-
+	double m_Current = 0.0;
 public:
 
 	eCapacitor(double capacitance);
 	virtual void Stamp(CircuitMtx& mtx, eNode* GndNode, double dt) override;
 	virtual void Update(CircuitMtx& mtx, double dt) override;
 	virtual ElementType_e GetType() override { return ty_Capacitor; }
-	virtual void Reset() override { m_PrevVoltage = 0.0; }
+	virtual void Reset() override;
 	virtual double GetCurrent() override;
 	virtual double GetVoltDrop() override;
 
@@ -305,6 +306,50 @@ class eDiode : public eElement
 #endif // DIODE_VER
 
 
+class eDiodeBridge : public eElement
+{
+	//       in0 ----(wire0)-----
+	//                   d0     |   d1
+	//                -----|>|--n0--|>|------
+	//                |                     |
+	// out2---(wire2)-n2                    n3---(wire3)---out3
+	//                |   d2          d3    |
+	//                -----|>|--n1---|>|-----
+	//                          |
+	//        in1 ----(wire1)----
+
+	friend class DiodeBridge;
+	eDiode m_Diodes[4];
+	eResistor m_Wires[4];
+	eNode* m_InnerNodes[4];
+	Circuit* m_Circuit;
+
+public:
+
+	enum PinIndex
+	{
+		In0 = 0,
+		In1 = 1,
+		OutMinus = 2,
+		OutPlus = 3,
+	};
+
+
+	eDiodeBridge(Circuit& circuit);
+	~eDiodeBridge();
+	virtual void Stamp(CircuitMtx& mtx, eNode* GndNode, double dt) override;
+	virtual ElementType_e GetType() override { return ty_DiodeBridge; }
+	virtual u64 GetNumEpins() override { return 4; }
+	virtual void Update(CircuitMtx& mtx, double dt) override;
+	virtual void Reset() override;
+	virtual ePin* GetEpin(int num);
+
+	ePin* GetIn0() { return m_Wires[0].GetEpin(0); }
+	ePin* GetIn1() { return m_Wires[1].GetEpin(0); }
+	ePin* GetOutMinus() { return m_Wires[2].GetEpin(0); }
+	ePin* GetOutPlus() { return m_Wires[3].GetEpin(0); }
+};
+
 
 class eInductor : public eElement
 {
@@ -361,7 +406,7 @@ protected:
 	//             13
 
 	std::string		m_CoilName;
-	u64				m_HashName;
+	u64				m_HashName = 0;
 
 	eResistor		m_R11;
 	eResistor		m_R12;
@@ -390,12 +435,15 @@ public:
 
 class eCoil : public eInductor
 {
-	std::string m_Name;
-	u64 m_HashName;
+	friend class Coil;
+	friend class NeutralRelayCoilWithRectifier;
+	friend class eCoilWithRectifier;
 
+	std::string m_Name;
+	u64		m_HashName = 0;
 	double	m_ReleaseDelay; // in seconds
-	double  m_InactiveCoilTimer = 0.0;
 	double  m_CurrThreshold = 0.015;
+	double  m_InactiveCoilTimer = 0.0;
 	bool	m_IsActive = false;
 
 public:
@@ -408,12 +456,38 @@ public:
 	void SetName(const std::string& name);
 	const std::string& GetName() { return m_Name; }
 	u64	GetHashName() { return m_HashName; }
+};
 
+
+class eCoilWithRectifier : public eElement
+{
+	friend class NeutralRelayCoilWithRectifier;
+	eInductor l;
+	eDiode d;
+	eResistor r;
+	eResistor wire;
+	eNode* m_InnerNodes[2];
+	Circuit* m_Circuit;
+
+public:
+
+	eCoilWithRectifier(Circuit& circ, double Inductance, double ReleaseDelay = 0.0);
+	~eCoilWithRectifier();
+
+	virtual void Stamp(CircuitMtx& mtx, eNode* GndNode, double dt) override;
+	virtual void Update(CircuitMtx& mtx, double dt) override;
+	virtual void InitMatrix(CircuitMtx& mtx) override;
+	virtual void Reset() override;
+	virtual ePin* GetEpin(int num) override;
+	virtual double GetCurrent() override;
+	virtual double GetVoltDrop() override;
 };
 
 
 class eTransformer : public eElement
 {
+	friend class Transformer;
+
 	double m_L1;
 	double m_L2;
 	double m_CouplCoef;

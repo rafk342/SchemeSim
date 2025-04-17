@@ -519,25 +519,30 @@ void eCapacitor::Stamp(CircuitMtx& mtx, eNode* GndNode, double dt)
 
 void eCapacitor::Update(CircuitMtx& mtx, double dt)
 {
-	if (m_ePins[0].IsConnectedToNode() && m_ePins[1].IsConnectedToNode())
-	{
-		double v1 = m_ePins[0].GetVoltage();
-		double v2 = m_ePins[1].GetVoltage();
-		m_PrevVoltage = v1 - v2;
-	}
+	double v_now = GetVoltDrop();
+	m_Current = m_Capacitance * (v_now - m_PrevVoltage) / dt;
+	m_PrevVoltage = v_now;
+}
+
+void eCapacitor::Reset()
+{
+	m_PrevVoltage = 0.0;
+	m_Current = 0.0;
 }
 
 double eCapacitor::GetCurrent()
 {
-	if (m_ePins[0].IsConnectedToNode() && m_ePins[1].IsConnectedToNode())
-	{
-		
-	}
-	return 0.0;
+	return m_Current;
 }
 
 double eCapacitor::GetVoltDrop()
 {
+	if (m_ePins[0].IsConnectedToNode() && m_ePins[1].IsConnectedToNode())
+	{
+		double v1 = m_ePins[0].GetVoltage();
+		double v2 = m_ePins[1].GetVoltage();
+		return v1 - v2;
+	}
 	return 0.0;
 }
 
@@ -813,6 +818,101 @@ double eDiode::LimitVoltStep(double Vnew, double Vold)
 
 
 //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+// 											eDiodeBridge
+
+
+
+eDiodeBridge::eDiodeBridge(Circuit& circuit)
+	: m_Wires{ { 1e-3 },{ 1e-3 },{ 1e-3 },{ 1e-3 } }
+	, m_InnerNodes{ circuit.CreateNode(), circuit.CreateNode(), circuit.CreateNode(), circuit.CreateNode() }
+	, m_Circuit(&circuit)
+{
+	auto& d0 = m_Diodes[0];
+	auto& d1 = m_Diodes[1];
+	auto& d2 = m_Diodes[2];
+	auto& d3 = m_Diodes[3];
+
+	auto& wire0 = m_Wires[0];
+	auto& wire1 = m_Wires[1];
+	auto& wire2 = m_Wires[2];
+	auto& wire3 = m_Wires[3];
+
+	auto& n0 = m_InnerNodes[0];
+	auto& n1 = m_InnerNodes[1];
+	auto& n2 = m_InnerNodes[2];
+	auto& n3 = m_InnerNodes[3];
+
+	wire0.GetEpin(1)->ConnectToNode(n0);
+	wire1.GetEpin(1)->ConnectToNode(n1);
+	wire2.GetEpin(1)->ConnectToNode(n2);
+	wire3.GetEpin(1)->ConnectToNode(n3);
+
+	d0.GetCathodePin()->ConnectToNode(n0);
+	d0.GetAnodePin()->ConnectToNode(n2);
+	d2.GetAnodePin()->ConnectToNode(n2);
+	d2.GetCathodePin()->ConnectToNode(n1);
+
+	d1.GetAnodePin()->ConnectToNode(n0);
+	d1.GetCathodePin()->ConnectToNode(n3);
+	d3.GetCathodePin()->ConnectToNode(n3);
+	d3.GetAnodePin()->ConnectToNode(n1);
+
+
+}
+
+eDiodeBridge::~eDiodeBridge()
+{
+	for (auto& n : m_InnerNodes)
+	{
+		m_Circuit->RemoveNode(n);
+	}
+}
+
+void eDiodeBridge::Stamp(CircuitMtx& mtx, eNode* GndNode, double dt)
+{
+	for (size_t i = 0; i < 4; i++)
+	{
+		m_Diodes[i].Stamp(mtx, GndNode, dt);
+		m_Wires[i].Stamp(mtx, GndNode, dt);
+	}
+}
+
+void eDiodeBridge::Update(CircuitMtx& mtx, double dt)
+{
+	for (auto& d : m_Diodes)
+	{
+		d.Update(mtx, dt);
+	}
+}
+
+void eDiodeBridge::Reset()
+{
+	std::ranges::for_each(m_Diodes, std::mem_fn(&eDiode::Reset));
+}
+
+ePin* eDiodeBridge::GetEpin(int num)
+{
+	auto& wire0 = m_Wires[0];
+	auto& wire1 = m_Wires[1];
+	auto& wire2 = m_Wires[2];
+	auto& wire3 = m_Wires[3];
+
+	PinIndex n = PinIndex(num);
+	switch (n)
+	{
+	case eDiodeBridge::In0: return wire0.GetEpin(0);
+	case eDiodeBridge::In1: return wire1.GetEpin(0);
+	case eDiodeBridge::OutMinus: return wire2.GetEpin(0);
+	case eDiodeBridge::OutPlus: return wire3.GetEpin(0);
+	default:
+		break;
+	}
+	SM_ASSERT(false, vfmt("eDiodeBridge::GetEpin({}) -> Invalid pin index", num));
+	std::unreachable();
+}
+
+
+//////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 // 											Inductor
 
 
@@ -881,10 +981,7 @@ void eInductor::Update(CircuitMtx& mtx, double dt)
 
 	if (pin0.IsConnectedToNode() && pin1.IsConnectedToNode())
 	{
-		if (pin0.IsConnectedToNode() && pin1.IsConnectedToNode())
-		{
-			m_prevCurrent = mtx.GetSolution()(m_CurrenIndex);
-		}
+		m_prevCurrent = mtx.GetSolution()(m_CurrenIndex);
 	}
 }
 
@@ -917,6 +1014,8 @@ double eInductor::GetCurrent()
 	return m_prevCurrent;
 }
 
+//////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+// 											eTransformer
 
 
 eTransformer::eTransformer(double Inductance1, double ratio) 
@@ -1025,6 +1124,9 @@ void eTransformer::Update(CircuitMtx& mtx, double dt)
 	double v2 = GetEpin(2)->GetVoltage() - GetEpin(3)->GetVoltage();
 }
 
+//////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+// 											eButton
+
 
 eButton::eButton(NormalState NormState)
 	: m_R(1.0)
@@ -1064,6 +1166,10 @@ ePin* eButton::GetEpin(int num)
 {
 	return (num == 0) ? m_R.GetEpin(0) : m_R.GetEpin(1);
 }
+
+
+//////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+// 											eRelayContactsGroup
 
 
 eRelayContactsGroup::eRelayContactsGroup(Circuit& circuit)
@@ -1118,7 +1224,7 @@ eRelayContactsGroup::State eRelayContactsGroup::GetState()
 void eRelayContactsGroup::SetCoilName(const std::string& name)
 {
 	m_CoilName = name;
-	m_HashName = std::hash<std::string>{}(name);
+	m_HashName = std::hash<std::string>()(name);
 }
 
 void eRelayContactsGroup::SetState(State state)
@@ -1137,6 +1243,9 @@ void eRelayContactsGroup::SetState(State state)
 	}
 }
 
+
+//////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+// 											eCoil
 
 
 eCoil::eCoil(double Inductance, double ReleaseDelay)
@@ -1175,5 +1284,83 @@ void eCoil::Update(CircuitMtx& mtx, double dt)
 void eCoil::SetName(const std::string& name)
 {
 	m_Name = name;
-	m_HashName = std::hash<std::string>{}(name);
+	m_HashName = std::hash<std::string>()(name);
 }
+
+
+
+eCoilWithRectifier::eCoilWithRectifier(Circuit& circ, double Inductance, double ReleaseDelay)
+	: l(Inductance/*, ReleaseDelay*/)
+	, r(10)
+	, wire(1e-3)
+	, m_InnerNodes{ circ.CreateNode(), circ.CreateNode() }
+	, m_Circuit(&circ)
+{ 
+	// --wire--n0----|<|----n1-----r----
+	//          |           |
+	//          |----l------|
+	
+	eNode* n0 = m_InnerNodes[0];
+	eNode* n1 = m_InnerNodes[1];
+	d.GetCathodePin()->ConnectToNode(n0);
+	wire.GetEpin(0)->ConnectToNode(n0);
+	l.GetEpin(0)->ConnectToNode(n0);
+
+	d.GetAnodePin()->ConnectToNode(n1);
+	r.GetEpin(0)->ConnectToNode(n1);
+	l.GetEpin(1)->ConnectToNode(n1);
+}
+
+eCoilWithRectifier::~eCoilWithRectifier()
+{
+	m_Circuit->RemoveNode(m_InnerNodes[0]);
+	m_Circuit->RemoveNode(m_InnerNodes[1]);
+}
+
+void eCoilWithRectifier::Stamp(CircuitMtx& mtx, eNode* GndNode, double dt)
+{
+	l.Stamp(mtx, GndNode, dt);
+	d.Stamp(mtx, GndNode, dt);
+	r.Stamp(mtx, GndNode, dt);
+	wire.Stamp(mtx, GndNode, dt);
+}
+
+void eCoilWithRectifier::Update(CircuitMtx& mtx, double dt)
+{
+	l.Update(mtx, dt);
+	d.Update(mtx, dt);
+	r.Update(mtx, dt);
+	wire.Update(mtx, dt);
+}
+
+void eCoilWithRectifier::InitMatrix(CircuitMtx& mtx)
+{
+	l.InitMatrix(mtx);
+	d.InitMatrix(mtx);
+	r.InitMatrix(mtx);
+	wire.InitMatrix(mtx);
+}
+
+void eCoilWithRectifier::Reset()
+{
+	l.Reset();
+	d.Reset();
+	r.Reset();
+	wire.Reset();
+}
+
+ePin* eCoilWithRectifier::GetEpin(int num)
+{
+	return num == 0 ? wire.GetEpin(1) : r.GetEpin(1);
+}
+
+double eCoilWithRectifier::GetCurrent()
+{
+	return l.GetCurrent();
+}
+
+double eCoilWithRectifier::GetVoltDrop()
+{
+	return l.GetVoltDrop();
+}
+

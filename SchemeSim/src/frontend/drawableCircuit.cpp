@@ -1,46 +1,6 @@
 #include "drawableCircuit.h"
 
 
-void eDrawableBase::SetRotation(float degrees)
-{
-	const sf::Angle NewRotation = sf::degrees(degrees);
-	for (sf::Vector2f& pos : m_PinPositions)
-	{
-		sf::Vector2f initialPos = pos.rotatedBy(-m_Rotation);
-		pos = initialPos.rotatedBy(NewRotation);
-	}
-	
-	m_Rotation = NewRotation;
-	m_sprite.setRotation(m_Rotation);
-}
-
-
-void eDrawableBase::Flip(flipAxis axis)
-{
-	for (auto& pos : m_PinPositions)
-	{
-		sf::Vector2f localPos = pos.rotatedBy(-m_Rotation);
-
-		if (axis == flipAxis::X)
-			localPos.x = -localPos.x;
-		else
-			localPos.y = -localPos.y;
-
-		pos = localPos.rotatedBy(m_Rotation);
-	}
-	sf::Vector2f scale = m_sprite.getScale();
-
-	m_sprite.setScale({ 
-		axis == flipAxis::X ? -scale.x : scale.x, 
-		axis == flipAxis::Y ? -scale.y : scale.y });
-
-	if (axis == flipAxis::X)
-		m_IsFlipped_X = !m_IsFlipped_X;
-	else
-		m_IsFlipped_Y = !m_IsFlipped_Y;
-}
-
-
 //----------------------------------------------------------------------------------------------------------------------------------------
 //											ConnectionPoint
 
@@ -51,21 +11,14 @@ ConnectionDot::ConnectionDot(sf::Vector2f pos)
 
 void ConnectionDot::UpdateVisibility()
 {
-	for (auto& [weak, pin] : m_ConnectedElements)
-	{
-		if (auto drawable = weak.lock())
+	m_ToElemPin = std::ranges::any_of(m_ConnectedElements, [](std::pair<std::weak_ptr<eDrawableBase>, PinIndex>& pair)
 		{
-			if (!drawable->IsWire())
+			if (std::shared_ptr drawable = pair.first.lock()) 
 			{
-				m_ToElemPin = true;
-				break;
+				return !drawable->IsWire();
 			}
-			else
-			{
-				m_ToElemPin = false;
-			}
-		}
-	}
+			return false;
+		});
 }
 
 
@@ -104,11 +57,11 @@ void ConnectionDot::Release(std::weak_ptr<eDrawableBase> element)
 }
 
 
-bool ConnectionDot::contains(std::weak_ptr<eDrawableBase> element) const
+bool ConnectionDot::contains(std::weak_ptr<eDrawableBase> element)
 {
 	if (element.expired())
 		return false;
-
+	CleanupFromExpiredElements();
 	return std::ranges::find_if(m_ConnectedElements, [element](const auto& pair) { return pair.first.lock() == element.lock(); }) != m_ConnectedElements.end();
 }
 
@@ -179,105 +132,6 @@ void ConnectionDot::CleanupFromExpiredElements()
 {
 	std::erase_if(m_ConnectedElements, [](const auto& pair) { return pair.first.expired(); });
 }
-
-//----------------------------------------------------------------------------------------------------------------------------------------
-//											Resistor
-
-
-
-Resistor::Resistor()
-	: eDrawableBase("assets\\resistor.png")
-{
-	GetTexture().setSmooth(true);
-	m_PinPositions =
-	{
-		{ 0.0f, 58.0f },
-		{ float(m_sprite.getTextureRect().size.x), 58.0f }
-	};
-}
-
-
-void Resistor::UIParams(eElement* elem)
-{
-	eResistor* resistor = static_cast<eResistor*>(elem);
-	ImGui::DragScalar(vfmt("Resistance##{}", u64(this)), ImGuiDataType_Double, &resistor->m_Resistance, 0.1f, nullptr, nullptr, "%.2f Ohm");
-	ImGui::Text("Current: %.5f A", resistor->GetCurrent());
-}
-
-
-std::string Resistor::Parser_WriteElementData(eElement* elem)
-{
-	eResistor* r = static_cast<eResistor*>(elem);
-	return std::to_string(r->m_Resistance);
-}
-
-
-void Resistor::Parser_ReadElementData(eElement* elem, const std::string& data)
-{
-	eResistor* r = static_cast<eResistor*>(elem);
-	r->m_Resistance = std::stod(data);
-}
-
-
-sf::Vector2f	Resistor::GetLocalPinPosition(int n)							{ return n == 0 ? m_PinPositions[0] : m_PinPositions[1]; }
-int				Resistor::GetPinIndexFromLocalPosition(sf::Vector2f pos)		{ return pos == m_PinPositions[0] ? 0 : 1; }
-void			Resistor::Draw()												{ dlDrawList::getWindow()->draw(m_sprite); }
-
-
-//----------------------------------------------------------------------------------------------------------------------------------------
-//											Battery
-
-
-Battery::Battery()
-	: eDrawableBase("assets\\battery.png")
-{
-	GetTexture().setSmooth(true);
-	m_PinPositions =
-	{
-		{ float(m_sprite.getTextureRect().size.x), 131.0f }, // +
-		{ 0.0f, 131.0f }, // -
-	};
-}
-
-
-void Battery::UIParams(eElement* elem)
-{
-	eVoltageSource* vs = static_cast<eVoltageSource*>(elem);
-	if (!vs)
-		return;
-
-	ImGui::DragScalar(vfmt("Voltage/Amplitude##{}", u64(this)),		ImGuiDataType_Double, &vs->m_Amplitude, 0.1f, nullptr, nullptr, "%.2f V");
-	ImGui::DragScalar(vfmt("Frequency##{}", u64(this)),				ImGuiDataType_Double, &vs->m_Frequency, 0.1f, nullptr, nullptr, "%.2f Hz");
-	ImGui::DragScalar(vfmt("Phase##{}", u64(this)),					ImGuiDataType_Double, &vs->m_Phase,		0.1f, nullptr, nullptr, "%.2f rad");
-
-	ImGui::Text("Current: %.5f A", vs->GetCurrent());
-}
-
-
-std::string Battery::Parser_WriteElementData(eElement* elem)
-{
-	eVoltageSource* vs = static_cast<eVoltageSource*>(elem);
-	return std::format("{:.6f} {:.6f} {:.6f}", vs->m_Amplitude, vs->m_Frequency, vs->m_Phase);
-}
-
-
-void Battery::Parser_ReadElementData(eElement* elem, const std::string& data)
-{
-	eVoltageSource* vs = static_cast<eVoltageSource*>(elem);
-	if (auto result = scn::scan<double, double, double>(data, "{} {} {}"))
-	{
-		auto [ampl, freq, phase] = result->values();
-		vs->m_Amplitude = ampl;
-		vs->m_Frequency = freq;
-		vs->m_Phase = phase;
-	}
-}
-
-
-int				Battery::GetPinIndexFromLocalPosition(sf::Vector2f pos)				{ return pos == m_PinPositions[0] ? 0 : 1; }
-sf::Vector2f	Battery::GetLocalPinPosition(int n)									{ return n == 0 ? m_PinPositions[0] : m_PinPositions[1]; }
-void			Battery::Draw()														{ dlDrawList::getWindow()->draw(m_sprite); }
-
 
 
 //----------------------------------------------------------------------------------------------------------------------------------------
@@ -542,6 +396,74 @@ void Wire::DisconnectFromDotAt()
 		m_EndDot.reset();
 	}
 }
+
+
+
+
+//----------------------------------------------------------------------------------------------------------------------------------------
+//											Oscilloscope
+
+
+Oscilloscope::Oscilloscope(std::shared_ptr<eDrawableBase> drawable)
+	: m_Drawable(drawable)
+	, m_ShowVoltage(true)
+	, m_ShowCurrent(true)
+{
+}
+
+void Oscilloscope::Init(OwnerListTy* owner, OwnerListTy::iterator it)
+{
+	m_OwnerList = owner;
+	m_selfIt = it;
+}
+
+Oscilloscope::~Oscilloscope()
+{
+}
+
+void Oscilloscope::DrawPlot()
+{
+	if (m_Drawable.expired())
+	{
+		m_OwnerList->erase(m_selfIt);
+		return;
+	}
+
+	if (ImPlot::BeginPlot(vfmt("##myPlot{}", u64(this))))
+	{
+		const double simTime = Simulation::CircTime();
+		ImPlot::SetupAxisLimits(ImAxis_X1, simTime - 1.0, simTime, ImGuiCond_Always);
+		ImPlot::SetupAxisLimits(ImAxis_Y1, -1, 1);
+
+		if (m_ShowVoltage && m_VoltData.Data.size() > 0)
+			ImPlot::PlotLine(vfmt("Vd##{}", u64(this)), &m_VoltData.Data[0].x, &m_VoltData.Data[0].y, m_VoltData.Data.size(), 0, m_VoltData.Offset, 2 * sizeof(float));
+
+		if (m_ShowCurrent && m_CurrentData.Data.size() > 0)
+			ImPlot::PlotLine(vfmt("I##{}", u64(this)), &m_CurrentData.Data[0].x, &m_CurrentData.Data[0].y, m_CurrentData.Data.size(), 0, m_CurrentData.Offset, 2 * sizeof(float));
+
+		ImPlot::EndPlot();
+	}
+
+	if (ImGui::Button(vfmt("Delete##{}",u64(this))))
+		m_OwnerList->erase(m_selfIt);
+}
+
+void Oscilloscope::AddVoltData(float time, float voltage)
+{
+	m_VoltData.AddPoint(time, voltage);
+}
+
+void Oscilloscope::AddCurrentData(float time, float current)
+{
+	m_CurrentData.AddPoint(time, current);
+}
+
+void Oscilloscope::Reset()
+{
+	m_VoltData.Erase();
+	m_CurrentData.Erase();
+}
+
 
 
 //----------------------------------------------------------------------------------------------------------------------------------------
@@ -815,8 +737,7 @@ std::optional<CircuitEditor::ClosestWirePointInfo> CircuitEditor::GetClosestPoin
 	
 	if (minDistance <= maxDistance)
 	{
-		ClosestWirePointInfo result
-		{
+		ClosestWirePointInfo result {
 			.position = closestPoint,
 			.segmentIndex = u64(std::distance(segments.begin(), minIt)),
 			.distance = minDistance,
@@ -830,7 +751,7 @@ std::optional<CircuitEditor::ClosestWirePointInfo> CircuitEditor::GetClosestPoin
 }
 
 
-std::optional<std::pair<std::shared_ptr<eDrawableBase>, u64>> CircuitEditor::SearchForConnectionWithOtherWire(const sf::Vector2f& MousePos, sf::Vector2f& OutEnd, std::shared_ptr<eDrawableBase> selfWire)
+std::optional<std::pair<std::shared_ptr<eDrawableBase>, u64>> CircuitEditor::SearchForNearestWire(const sf::Vector2f& MousePos, sf::Vector2f& OutEnd, std::shared_ptr<eDrawableBase> selfWire)
 {
 	for (auto& elem : m_DrawableCircuit->m_DrawableElements)
 	{
@@ -1041,6 +962,9 @@ void CircuitEditor::DrawUI()
 
 		if (toRemove != m_DrawableCircuit->m_DrawableElements.size())
 		{
+			if (m_DrawableToOscilloscope.contains(m_DrawableCircuit->m_DrawableElements[toRemove].get()))
+				RemoveOscilloscope(m_DrawableCircuit->m_DrawableElements[toRemove]);
+			
 			m_DrawableCircuit->RemoveElement(toRemove);
 			m_DrawableCircuit->SyncWithCircuit();
 		}
@@ -1071,6 +995,24 @@ void CircuitEditor::DrawUI()
 
 	if (ImGui::Button("Add Neutral Coil"))
 		m_DrawableCircuit->AddNeutralRelayCoil();
+
+	if (ImGui::Button("Add neutral coil with 3rd relyability class"))
+		m_DrawableCircuit->AddNeutralRelayCoil3Class();
+
+	if (ImGui::Button("Add neitral coil with delay"))
+		m_DrawableCircuit->AddNeutralRelayCoilWithDelay();
+
+	if (ImGui::Button("Add neutral coil with delay and 3rd relyability class"))
+		m_DrawableCircuit->AddNeutralRelayCoilWithDelay3Class();
+
+	if (ImGui::Button("Add neutral coil with rectifier"))
+		m_DrawableCircuit->AddNeutralRelayCoilWithDiode();
+
+	if (ImGui::Button("Add Transformer"))
+		m_DrawableCircuit->AddTransformer();
+	 
+	if (ImGui::Button("Add diode bridge"))
+		m_DrawableCircuit->AddDiodeBridge();
 
 
 	ImGui::Separator();
@@ -1147,15 +1089,15 @@ void CircuitEditor::DrawUI()
 
 	ImGui::Separator();
 
-	if (ImGui::Button("Solve"))
-	{
-		m_DrawableCircuit->SyncWithCircuit();
-		m_DrawableCircuit->m_Circuit->GetMatrix().Clear();
-		m_DrawableCircuit->m_Circuit->StampElements(0.001);
-		m_DrawableCircuit->m_Circuit->Solve();
-		m_DrawableCircuit->m_Circuit->UpdateElements(0.000005);
-		m_DrawableCircuit->UpdateWireColors();
-	}
+	//if (ImGui::Button("Solve"))
+	//{
+	//	m_DrawableCircuit->SyncWithCircuit();
+	//	m_DrawableCircuit->m_Circuit->GetMatrix().Clear();
+	//	m_DrawableCircuit->m_Circuit->StampElements(0.001);
+	//	m_DrawableCircuit->m_Circuit->Solve();
+	//	m_DrawableCircuit->m_Circuit->UpdateElements(0.000005);
+	//	m_DrawableCircuit->UpdateWireColors();
+	//}
 
 	std::stringstream ss;
 	m_DrawableCircuit->m_Circuit->GetMatrix().Print(ss);
@@ -1328,7 +1270,7 @@ void CircuitEditor::UpdateConnectionData(u64 WireIndex, sf::Vector2f& point)
 		wire->ConnectToDotAt<StartOrEnd>(newDot);
 		newDot->SetPosition(point);
 	}
-	else if (std::optional otherWireData = SearchForConnectionWithOtherWire(point, point, elem)) // we're close to another wire
+	else if (std::optional otherWireData = SearchForNearestWire(point, point, elem)) // we're close to another wire
 	{
 		wire->DisconnectFromDotAt<StartOrEnd>();
 		auto& [otherWireBase, segmentIndex] = *otherWireData;
@@ -1367,659 +1309,4 @@ void CircuitEditor::UpdateConnectionDots()
 	{
 		dot->SetPosition(dot->GetPosition()); // update connected elements positions
 	}
-}
-
-
-//----------------------------------------------------------------------------------------------------------------------------------------
-//											Parser
-
-
-
-void CircuitParser::LoadFromFile(const std::filesystem::path& path)
-{
-	if (!m_editor || !m_editor->m_DrawableCircuit)
-		return;
-
-	DrawableCircuit* drawableCirc = m_editor->m_DrawableCircuit;
-
-	std::ifstream file(path);
-	if (!file.is_open())
-		return;
-
-	std::vector<std::string> lines;
-	{
-		std::string line;
-		while (std::getline(file, line))
-			lines.push_back(line);
-	}
-	file.close();
-	if (lines.empty())
-		return;
-
-	for (size_t i = 0; i < lines.size(); i++)
-	{
-		std::string& line = lines[i];
-		if (line == "DOTS")
-		{
-			while (true)
-			{
-				if (i >= lines.size())
-					break;
-
-				line = lines[++i];
-				if (line == "DOTS_END")
-					break;
-
-				drawableCirc->CreateConnectionDot(ReadVec2f(line));
-			}
-		}
-
-		if (line == "WIRES")
-		{
-			while (true)
-			{
-				if (i >= lines.size())
-					break;
-				line = lines[++i];
-				if (line == "WIRES_END")
-					break;
-
-				if (line == "next")
-				{
-					drawableCirc->AddWire();
-					continue;
-				}
-				sf::Vector2f start = ReadVec2f(line);
-				sf::Vector2f end = ReadVec2f(lines[++i]);
-				drawableCirc->m_DrawableElements.back()->As<Wire>()->GetSegments().push_back({ start, end });
-			}
-		}
-
-		if (line == "ELEMENTS")
-		{
-			while (true)
-			{
-				if (i >= lines.size())
-					break;
-				line = lines[++i];
-				if (line == "next")
-					continue;
-				if (line == "ELEMENTS_END")
-					break;
-
-				DrawableType type = DrawableType(std::stoi(line));
-				std::shared_ptr<eDrawableBase> drawableBase;
-				switch (type)
-				{
-				case DrawableType::DrawableResistorType:
-					drawableBase = drawableCirc->AddResistor();
-					break;
-				case DrawableType::DrawableBatteryType:
-					drawableBase = drawableCirc->AddBattery();
-					break;
-				case DrawableType::DrawableCapacitorType:
-					drawableBase = drawableCirc->AddCapacitor();
-					break;
-				case DrawableType::DrawableInductorType:
-					drawableBase = drawableCirc->AddInductor();
-					break;
-				case DrawableType::DrawableDiodeType:
-					drawableBase = drawableCirc->AddDiode();
-					break;
-				default:
-					break;
-				}
-
-				sf::Vector2f pos = ReadVec2f(lines[++i]);
-				float rot = ReadFloat(lines[++i]);
-				bool flippedX = ReadInt(lines[++i]) != 0;
-				bool flippedY = ReadInt(lines[++i]) != 0;
-				std::string data = lines[++i];
-
-				drawableBase->SetPosition(pos);
-				drawableBase->SetRotation(rot);
-				drawableBase->Parser_ReadElementData(drawableCirc->GetElecticElementFromDrawable(drawableBase.get()), data);
-				if (flippedX)
-					drawableBase->Flip(flipAxis::X);
-				if (flippedY)
-					drawableBase->Flip(flipAxis::Y);
-			}
-		}
-	}
-
-	m_editor->UpdateAllWireConnections();
-	file.close();
-}
-
-
-void CircuitParser::SaveToFile(const std::filesystem::path& path)
-{
-	if (!m_editor)
-		return;
-
-	DrawableCircuit* drawableCirc = m_editor->m_DrawableCircuit;
-	std::deque<std::shared_ptr<eDrawableBase>>& elements = drawableCirc->m_DrawableElements;
-	std::unordered_map<std::shared_ptr<ConnectionDot>, eNode*>& connections = drawableCirc->m_Connections;
-	if (!drawableCirc)
-		return;
-	
-	std::ofstream file(path);
-	if (!file.is_open())
-		return;
-
-	file << "DOTS\n";
-	for (auto& [dot, node] : connections)
-	{
-		if (dot->HasConnectionWithElem())
-			continue;
-
-		WriteVec2f(file, dot->GetPosition());
-	}
-	file << "DOTS_END\n";
-
-	file << "WIRES\n";
-	for (auto& elemBase : elements)
-	{
-		if (!elemBase->IsWire())
-			continue;
-
-		Wire* wire = elemBase->As<Wire>();
-		auto& segments = wire->GetSegments();
-		if (segments.empty())
-			continue;
-		
-		file << "next\n";
-		for (auto& segment : segments)
-		{
-			WriteVec2f(file, segment.vStart);
-			WriteVec2f(file, segment.vEnd);
-		}
-	}
-	file << "WIRES_END\n";
-
-	file << "ELEMENTS\n";
-	for (auto& drawableBase : elements)
-	{
-		if (drawableBase->IsWire())
-			continue;
-		file << "next\n";
-
-		DrawableType type = drawableBase->GetType();
-		file << int(type) << "\n";
-		
-		sf::Vector2f pos = drawableBase->GetPosition();
-		float rot = drawableBase->GetRotation().asDegrees();
-		WriteVec2f(file, pos);
-		WriteFloat(file, rot);
-		WriteInt(file, int(drawableBase->IsFlippedOverX()));
-		WriteInt(file, int(drawableBase->IsFlippedOverY()));
-
-		std::string data = drawableBase->Parser_WriteElementData(drawableCirc->GetElecticElementFromDrawable(drawableBase.get()));
-		file << data << "\n";
-	}
-	file << "ELEMENTS_END\n";
-	
-	file.flush();
-	file.close();
-}
-
-
-
-Capacitor::Capacitor()
-	: eDrawableBase("assets\\capacitor.png")
-{
-	GetTexture().setSmooth(true);
-	m_PinPositions =
-	{
-		{ float(m_sprite.getTextureRect().size.x), 100.0f },
-		{ 0.0f, 100.0f },
-	};
-}
-
-
-void Capacitor::Draw()
-{
-	dlDrawList::getWindow()->draw(m_sprite);
-}
-
-
-sf::Vector2f Capacitor::GetLocalPinPosition(int n)
-{
-	return m_PinPositions[n];
-}
-
-
-void Capacitor::UIParams(eElement* elem)
-{
-	eCapacitor* capacitor = static_cast<eCapacitor*>(elem);
-	ImGui::DragScalar("Capacitance", ImGuiDataType_Double, &capacitor->m_Capacitance, 0.00001f, nullptr, nullptr, "%.6f F");
-}
-
-
-int Capacitor::GetPinIndexFromLocalPosition(sf::Vector2f pos)
-{
-	return pos == m_PinPositions[0] ? 0 : 1;
-}
-
-
-std::string Capacitor::Parser_WriteElementData(eElement* elem)
-{
-	eCapacitor* capacitor = static_cast<eCapacitor*>(elem);
-	std::string data = std::to_string(capacitor->m_Capacitance);
-	return data;
-}
-
-
-void Capacitor::Parser_ReadElementData(eElement* elem, const std::string& data)
-{
-	eCapacitor* capacitor = static_cast<eCapacitor*>(elem);
-	capacitor->m_Capacitance = std::stod(data);
-}
-
-
-
-
-Inductor::Inductor()
-	: eDrawableBase("assets\\inductor2.png")
-{
-	GetTexture().setSmooth(true);
-	m_PinPositions =
-	{
-		{ float(m_sprite.getTextureRect().size.x), 57.0f },
-		{ 0.0f, 57.0f },
-	};
-}
-
-void Inductor::Draw()
-{
-	dlDrawList::getWindow()->draw(m_sprite);
-}
-
-sf::Vector2f Inductor::GetLocalPinPosition(int n)
-{
-	return m_PinPositions[n];
-}
-
-void Inductor::UIParams(eElement* elem)
-{
-	eInductor* inductor = static_cast<eInductor*>(elem);
-	ImGui::DragScalar("Inductance", ImGuiDataType_Double, &inductor->m_Inductance, 0.00001f, nullptr, nullptr, "%.6f H");
-}
-
-int Inductor::GetPinIndexFromLocalPosition(sf::Vector2f pos)
-{
-	return pos == m_PinPositions[0] ? 0 : 1;
-}
-
-std::string Inductor::Parser_WriteElementData(eElement* elem)
-{
-	return std::to_string(static_cast<eInductor*>(elem)->m_Inductance);
-}
-
-void Inductor::Parser_ReadElementData(eElement* elem, const std::string& data)
-{
-	eInductor* inductor = static_cast<eInductor*>(elem);
-	inductor->m_Inductance = std::stod(data);
-}
-
-
-Diode::Diode()
-	: eDrawableBase("assets\\diode.png")
-{
-	GetTexture().setSmooth(true);
-	m_PinPositions =
-	{
-		{ 0.0f, 64.0f },
-		{ float(m_sprite.getTextureRect().size.x), 64.0f },
-	};
-}
-
-void Diode::Draw()
-{
-	dlDrawList::getWindow()->draw(m_sprite);
-}
-
-sf::Vector2f Diode::GetLocalPinPosition(int n)
-{
-	return m_PinPositions[n];
-}
-
-void Diode::UIParams(eElement* elem)
-{
-
-}
-
-int Diode::GetPinIndexFromLocalPosition(sf::Vector2f pos)
-{
-	return pos == m_PinPositions[0] ? 0 : 1;
-}
-
-std::string Diode::Parser_WriteElementData(eElement* elem)
-{
-	return "";
-}
-
-void Diode::Parser_ReadElementData(eElement* elem, const std::string& data)
-{ }
-
-
-
-
-RelayContactsGroup::RelayContactsGroup()
-	: eDrawableBase("assets\\switch.png")
-	, m_BaseSprite(m_texture)
-	, m_ButtonSprite(m_texture)
-{
-	m_texture.setSmooth(true);
-
-	m_PinPositions = 
-	{
-		{ 0.0f, 12.0f },
-		{ float(m_sprite.getTextureRect().size.x), 12.0f },
-		{ 68.0f, 130.0f },
-	};
-	m_BaseSprite.setTextureRect(sf::IntRect({ 0, 0 }, { 300, 60 }));
-	m_ButtonSprite.setTextureRect(sf::IntRect({ 0, 70 }, { 219, 48 }));
-	
-	m_ButtonSprite.setOrigin({ 195.0f, 24.0f });
-	m_ButtonPos = { 235, 56 };
-	m_ButtonSprite.setPosition(m_ButtonPos);
-	m_ButtonSprite.setRotation(sf::degrees(-25.0f));
-}
-
-
-void RelayContactsGroup::SetPosition(sf::Vector2f pos)
-{
-	m_BaseSprite.setPosition(pos);
-	m_ButtonSprite.setPosition(pos + m_ButtonPos);
-}
-
-
-sf::Vector2f RelayContactsGroup::GetPosition()
-{
-	return m_BaseSprite.getPosition();
-}
-
-void RelayContactsGroup::Update(DrawableCircuit& circ, eElement* elem)
-{
-	eRelayContactsGroup* eGroup = static_cast<eRelayContactsGroup*>(elem);
-
-	if (m_Coil.expired())
-	{
-		m_Coil.reset();
-		if (!LookupCoil(eGroup, circ))
-			return;
-	}
-
-	eCoil* pCoil = static_cast<eCoil*>(circ.GetElecticElementFromDrawable(m_Coil.lock().get()));
-	if (pCoil->GetHashName() != eGroup->GetCoilHashName())
-	{
-		m_Coil.reset();
-		if (!LookupCoil(eGroup, circ))
-		{
-			m_stateToDraw = eRelayContactsGroup::State::n11_n12;
-			eGroup->SetState(eRelayContactsGroup::State::n11_n12);
-			return;
-		}
-	}
-
-	if (pCoil->IsActive())
-	{
-		eGroup->SetState(eRelayContactsGroup::State::n11_n13);
-		m_stateToDraw = eRelayContactsGroup::State::n11_n13;
-	}
-	else
-	{
-		eGroup->SetState(eRelayContactsGroup::State::n11_n12);
-		m_stateToDraw = eRelayContactsGroup::State::n11_n12;
-	}
-}
-
-
-void RelayContactsGroup::SetRotation(float degrees)
-{
-	const sf::Angle NewRotation = sf::degrees(degrees);
-	for (sf::Vector2f& pos : m_PinPositions)
-	{
-		sf::Vector2f initialPos = pos.rotatedBy(-m_Rotation);
-		pos = initialPos.rotatedBy(NewRotation);
-	}
-
-	m_BaseSprite.setRotation(NewRotation);
-	m_ButtonPos = m_ButtonPos.rotatedBy(-m_Rotation).rotatedBy(NewRotation);
-	m_Rotation = NewRotation;
-}
-
-
-void RelayContactsGroup::Flip(flipAxis axis)
-{
-	for (auto& pos : m_PinPositions)
-	{
-		sf::Vector2f localPos = pos.rotatedBy(-m_Rotation);
-
-		if (axis == flipAxis::X)
-			localPos.x = -localPos.x;
-		else
-			localPos.y = -localPos.y;
-
-		pos = localPos.rotatedBy(m_Rotation);
-	}
-
-	sf::Vector2f baseScale = m_BaseSprite.getScale();
-	m_BaseSprite.setScale({
-		axis == flipAxis::X ? -baseScale.x : baseScale.x,
-		axis == flipAxis::Y ? -baseScale.y : baseScale.y });
-
-	sf::Vector2f buttonScale = m_ButtonSprite.getScale();
-	m_ButtonSprite.setScale({
-		axis == flipAxis::X ? -buttonScale.x : buttonScale.x,
-		axis == flipAxis::Y ? -buttonScale.y : buttonScale.y });
-
-
-	if (axis == flipAxis::X)
-	{
-		m_IsFlipped_X = !m_IsFlipped_X;
-		m_ButtonPos = m_ButtonPos.rotatedBy(-m_Rotation);
-		m_ButtonPos.x = -m_ButtonPos.x;
-		m_ButtonPos = m_ButtonPos.rotatedBy(m_Rotation);
-	}
-	else
-	{
-		m_IsFlipped_Y = !m_IsFlipped_Y;
-		m_ButtonPos = m_ButtonPos.rotatedBy(-m_Rotation);
-		m_ButtonPos.y = -m_ButtonPos.y;
-		m_ButtonPos = m_ButtonPos.rotatedBy(m_Rotation);
-	}
-}
-
-
-bool RelayContactsGroup::LookupCoil(eRelayContactsGroup* my_eContacts, DrawableCircuit& circ)
-{
-	auto& drawableElements = circ.GetDrawableElements();
-
-	auto it = std::ranges::find_if(drawableElements, 
-			[&](const std::shared_ptr<eDrawableBase>& otherDrawable)
-			{
-				if (otherDrawable->GetType() == DrawableType::DrawableRelayCoilType)
-				{
-					eCoil* someCoil = static_cast<eCoil*>(circ.GetElecticElementFromDrawable(otherDrawable.get()));
-					return my_eContacts->GetCoilHashName() == someCoil->GetHashName();
-				}
-				return false;
-			});
-
-
-	if (it != drawableElements.end())
-		m_Coil = *it;
-	else
-		return false;
-}
-
-
-void RelayContactsGroup::Draw()
-{
-	switch (m_stateToDraw)
-	{
-	case eRelayContactsGroup::n11_n12:
-		m_ButtonSprite.setRotation(m_Rotation + sf::degrees(0.0f));
-		break;
-	case eRelayContactsGroup::n11_n13:
-		m_ButtonSprite.setRotation(m_Rotation + sf::degrees(-25.0f));
-		break;
-	default:
-		break;
-	}
-
-	dlDrawList::getWindow()->draw(m_BaseSprite);
-	dlDrawList::getWindow()->draw(m_ButtonSprite);
-
-	for (auto& pos : m_PinPositions)
-	{
-		DrawCircle(m_BaseSprite.getPosition() + pos, 5.0f, sf::Color::Red);
-	}
-}
-
-
-sf::Vector2f RelayContactsGroup::GetLocalPinPosition(int n)
-{
-	return m_PinPositions[n];
-}
-
-
-void RelayContactsGroup::UIParams(eElement* elem)
-{ 
-	eRelayContactsGroup* contact = static_cast<decltype(contact)>(elem);
-
-	if (ImGui::InputText("Coil name", m_UiBuff, std::size(m_UiBuff)))
-	{
-		contact->SetCoilName(m_UiBuff);
-	}
-}
-
-int RelayContactsGroup::GetPinIndexFromLocalPosition(sf::Vector2f pos)
-{
-	return	pos == m_PinPositions[0] ? 0 :
-			pos == m_PinPositions[1] ? 1 :
-			pos == m_PinPositions[2] ? 2 : 0;
-}
-
-std::string RelayContactsGroup::Parser_WriteElementData(eElement* elem) { return ""; }
-void RelayContactsGroup::Parser_ReadElementData(eElement* elem, const std::string& data) { }
-
-bool RelayContactsGroup::IsHovered() { return WidgetBase::IsHovered(m_BaseSprite); }
-
-
-
-NeutralRelayCoil::NeutralRelayCoil()
-	: eDrawableBase("assets\\coilNeutral.png")
-{
-	GetTexture().setSmooth(true);
-	m_PinPositions =
-	{
-		{ 0.0f, 148.0f },
-		{ float(m_sprite.getTextureRect().size.x), 148.0f },
-	};
-}
-
-
-void NeutralRelayCoil::Draw()
-{
-	dlDrawList::getWindow()->draw(m_sprite);
-}
-
-sf::Vector2f NeutralRelayCoil::GetLocalPinPosition(int n)
-{
-	return m_PinPositions[n];
-}
-
-void NeutralRelayCoil::UIParams(eElement* elem)
-{
-	eCoil* coil = static_cast<eCoil*>(elem);
-	if (ImGui::InputText("Coil name", m_UiBuff, std::size(m_UiBuff)))
-	{
-		coil->SetName(m_UiBuff);
-	}
-
-	ImGui::Text("Is active: %s", coil->IsActive() ? "true" : "false");
-}
-
-int NeutralRelayCoil::GetPinIndexFromLocalPosition(sf::Vector2f pos)
-{
-	return pos == m_PinPositions[0] ? 0 : 1;
-}
-
-std::string NeutralRelayCoil::Parser_WriteElementData(eElement* elem)
-{
-	return "";
-}
-
-void NeutralRelayCoil::Parser_ReadElementData(eElement* elem, const std::string& data)
-{
-}
-
-void NeutralRelayCoil::Update(DrawableCircuit& circ, eElement* elem)
-{
-	//eCoil* coil = static_cast<eCoil*>(elem);
-}
-
-
-
-
-
-Oscilloscope::Oscilloscope(std::shared_ptr<eDrawableBase> drawable)
-	: m_Drawable(drawable)
-	, m_ShowVoltage(true)
-	, m_ShowCurrent(true)
-{ }
-
-void Oscilloscope::Init(OwnerListTy * owner, OwnerListTy::iterator it)
-{
-	m_OwnerList = owner;
-	m_selfIt = it;
-}
-
-Oscilloscope::~Oscilloscope()
-{ }
-
-void Oscilloscope::DrawPlot()
-{
-	if (m_Drawable.expired())
-	{
-		m_OwnerList->erase(m_selfIt);
-		return;
-	}
-
-	if (ImPlot::BeginPlot("##Digital"))
-	{
-		const f128& simTime = Simulation::CircTime();
-		ImPlot::SetupAxisLimits(ImAxis_X1, simTime - 1.0f, simTime, ImGuiCond_Always);
-		ImPlot::SetupAxisLimits(ImAxis_Y1, -1, 1);
-
-		if (m_ShowVoltage && m_VoltData.Data.size() > 0)
-			ImPlot::PlotLine(vfmt("Vd##{}", u64(this)), &m_VoltData.Data[0].x, &m_VoltData.Data[0].y, m_VoltData.Data.size(), 0, m_VoltData.Offset, 2 * sizeof(float));
-
-		if (m_ShowCurrent && m_CurrentData.Data.size() > 0)
-			ImPlot::PlotLine(vfmt("I##{}", u64(this)), &m_CurrentData.Data[0].x, &m_CurrentData.Data[0].y, m_CurrentData.Data.size(), 0, m_CurrentData.Offset, 2 * sizeof(float));
-
-		ImPlot::EndPlot();
-	}
-
-	if (ImGui::Button("Delete"))
-		m_OwnerList->erase(m_selfIt);
-}
-
-void Oscilloscope::AddVoltData(float time, float voltage)
-{
-	m_VoltData.AddPoint(time, voltage);
-}
-
-void Oscilloscope::AddCurrentData(float time, float current)
-{
-	m_CurrentData.AddPoint(time, current);
-}
-
-void Oscilloscope::Reset()
-{
-	m_VoltData.Erase();
-	m_CurrentData.Erase();
 }
