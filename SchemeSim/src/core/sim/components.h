@@ -458,11 +458,13 @@ public:
 	u64	GetHashName() { return m_HashName; }
 };
 
+#define vComposeCoil 1
 
+#if vComposeCoil
 class eCoilWithRectifier : public eElement
 {
 	friend class NeutralRelayCoilWithRectifier;
-	eInductor l;
+	eCoil* l;
 	eDiode d;
 	eResistor r;
 	eResistor wire;
@@ -474,6 +476,8 @@ public:
 	eCoilWithRectifier(Circuit& circ, double Inductance, double ReleaseDelay = 0.0);
 	~eCoilWithRectifier();
 
+	virtual ElementType_e GetType() override { return ty_Coil; }
+
 	virtual void Stamp(CircuitMtx& mtx, eNode* GndNode, double dt) override;
 	virtual void Update(CircuitMtx& mtx, double dt) override;
 	virtual void InitMatrix(CircuitMtx& mtx) override;
@@ -482,7 +486,26 @@ public:
 	virtual double GetCurrent() override;
 	virtual double GetVoltDrop() override;
 };
+#else
 
+class eCoilWithRectifier : public eInductor
+{
+	friend class NeutralRelayCoilWithRectifier;
+	//eDiode d;
+	eResistor* r;
+	eResistor* wire;
+	eNode* m_InnerNodes[2];
+	Circuit* m_Circuit;
+
+public:
+
+	eCoilWithRectifier(Circuit& circ, double Inductance, double ReleaseDelay = 0.0);
+	~eCoilWithRectifier();
+
+	virtual ElementType_e GetType() override { return ty_Coil; }
+	virtual ePin* GetEpin(int num) override;
+};
+#endif
 
 class eTransformer : public eElement
 {

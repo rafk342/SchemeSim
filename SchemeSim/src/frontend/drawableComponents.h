@@ -285,6 +285,7 @@ public:
 
 class NeutralRelayCoilWithRectifier : public Coil
 {
+	char m_UiBuff[0x80]{};
 public:
 	using SimTy = eCoilWithRectifier;
 

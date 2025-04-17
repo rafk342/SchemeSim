@@ -690,7 +690,7 @@ void Simulation::Simulate(double frameTime, const double step)
 	if (sm_Circuit->GetNodes().size() == 0)
 		return;
 
-#define LOG_DATA 0
+#define LOG_DATA 1
 
 #if LOG_DATA
 	static std::ofstream file("sim_results.txt");

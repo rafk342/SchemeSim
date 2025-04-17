@@ -212,8 +212,8 @@ SFMLRenderer* SFMLRenderer::OnRender()
 
 	Timer timer;
 
-	Circuit::ResultsType results = circuit.Test2(10);
-	circuit.Reset();
+	//Circuit::ResultsType results = circuit.Test2(10);
+	//circuit.Reset();
 	//std::cout << "-------------------\n";
 	//circuit.Test2();
 	//circuit.Reset();

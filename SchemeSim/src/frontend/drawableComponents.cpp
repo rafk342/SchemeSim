@@ -313,7 +313,7 @@ void RelayContactsGroup::Update(DrawableCircuit& circ, eElement* elem)
 			return;
 	}
 
-	eCoil* pCoil = static_cast<eCoil*>(circ.GetElecticElementFromDrawable(m_Coil.lock().get()));
+	eCoil* pCoil = static_cast<eCoil*>(circ.GetAssociatedElectricElement(m_Coil.lock().get()));
 	if (pCoil->GetHashName() != eGroup->GetCoilHashName())
 	{
 		m_Coil.reset();
@@ -404,7 +404,7 @@ bool RelayContactsGroup::LookupCoil(eRelayContactsGroup* my_eContacts, DrawableC
 		{
 			if (otherDrawable->GetType() == DrawableType::DRAWABLE_RELAY_COIL)
 			{
-				eCoil* someCoil = static_cast<eCoil*>(circ.GetElecticElementFromDrawable(otherDrawable.get()));
+				eCoil* someCoil = static_cast<eCoil*>(circ.GetAssociatedElectricElement(otherDrawable.get()));
 				return my_eContacts->GetCoilHashName() == someCoil->GetHashName();
 			}
 			return false;
@@ -589,10 +589,26 @@ NeutralRelayCoilWithRectifier::NeutralRelayCoilWithRectifier()
 
 void NeutralRelayCoilWithRectifier::UIParams(eElement* elem)
 {
-	eCoilWithRectifier* coil = static_cast<eCoilWithRectifier*>(elem);
-	auto r = coil->r.GetResistance();
-	ImGui::DragScalar(vfmt("R##{}", u64(this)), ImGuiDataType_Double, &r, 0.01f, nullptr, nullptr, "%.4f Ohm");
-	coil->r.SetResistance(r);
+	eCoilWithRectifier* wrapper = static_cast<eCoilWithRectifier*>(elem);
+	double r = wrapper->r.GetResistance();
+	double min = 1e-6;
+	double max = 1e6;
+	ImGui::DragScalar(vfmt("R##{}", u64(this)), ImGuiDataType_Double, &r, 0.01f, &min, &max, "%.4f Ohm");
+	wrapper->r.SetResistance(r);
+
+#if vComposeCoil
+	if (ImGui::InputText("Coil name", m_UiBuff, std::size(m_UiBuff)))
+		wrapper->l->SetName(m_UiBuff);
+
+	ImGui::DragScalar(vfmt("Inductance##{}", u64(this)), ImGuiDataType_Double, &wrapper->l->m_Inductance, 0.00001f, &min, &max, "%.6f H");
+	ImGui::DragScalar(vfmt("Release delay##{}", u64(this)), ImGuiDataType_Double, &wrapper->l->m_ReleaseDelay, 0.01f, &min, &max, "%.5f s");
+	ImGui::DragScalar(vfmt("Current threshold##{}", u64(this)), ImGuiDataType_Double, &wrapper->l->m_CurrThreshold, 0.001f, &min, &max, "%.5f A");
+	ImGui::Text("Is active: %s", wrapper->l->IsActive() ? "true" : "false");
+	ImGui::Text("Inactive timer: %.5f", wrapper->l->m_InactiveCoilTimer);
+	ImGui::Text("Current: %.5f A", wrapper->l->GetCurrent());
+#else
+	//Coil::UIParams(elem);
+#endif
 }
 
 

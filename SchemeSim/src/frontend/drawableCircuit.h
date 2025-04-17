@@ -245,7 +245,7 @@ public:
 		return drawable;
 	}
 
-	eElement* GetElecticElementFromDrawable(eDrawableBase* drawable);
+	eElement* GetAssociatedElectricElement(eDrawableBase* drawable);
 	eNode* GetElecticNode(std::shared_ptr<ConnectionDot> dot);
 	auto& GetDrawableElements() { return m_DrawableElements; }
 };

@@ -277,7 +277,7 @@ std::shared_ptr<eDrawableBase> Wire::SplitSelf(DrawableCircuit& circuit, u64 Seg
 
 void Wire::UpdateColor(DrawableCircuit& circuit)
 {
-	eElement* elem = circuit.GetElecticElementFromDrawable(this);
+	eElement* elem = circuit.GetAssociatedElectricElement(this);
 	if (!elem)
 		return;
 
@@ -338,7 +338,7 @@ void Wire::DrawCurrentDots(eElement* elem)
 	for (auto& seg : m_Segments)
 	{
 		seg.curcount += current * (std::pow(CurrentSpeedScalar, 2.0f) / 100.0f);
-		if (std::isinf(seg.curcount))
+		if (std::isinf(seg.curcount)) [[unlikely]]
 			seg.curcount = 0.0f;
 		
 		sf::Vector2f dir = seg.vEnd - seg.vStart;
@@ -506,7 +506,7 @@ void DrawableCircuit::SyncWithCircuit()
 		{
 			if (auto drawable = WeakDrawable.lock())
 			{
-				GetElecticElementFromDrawable(drawable.get())->GetEpin(pinIndex)->ConnectToNode(node);
+				GetAssociatedElectricElement(drawable.get())->GetEpin(pinIndex)->ConnectToNode(node);
 			}
 		}
 	}
@@ -549,7 +549,7 @@ void DrawableCircuit::Draw(float frameTime)
 		Wire* wire = elem->As<Wire>();
 		wire->UpdateColor(*this);
 		wire->Draw();
-		wire->DrawCurrentDots(GetElecticElementFromDrawable(elem.get()));
+		wire->DrawCurrentDots(GetAssociatedElectricElement(elem.get()));
 	}
 
 	for (auto& [dot, node] : m_Connections)
@@ -560,7 +560,7 @@ void DrawableCircuit::Draw(float frameTime)
 
 	for (auto& elem : m_DrawableElements)
 	{
-		elem->Update(*this, GetElecticElementFromDrawable(elem.get()));
+		elem->Update(*this, GetAssociatedElectricElement(elem.get()));
 	}
 }
 
@@ -611,10 +611,10 @@ void DrawableCircuit::UpdateWireColors()
 	}
 }
 
-eElement* DrawableCircuit::GetElecticElementFromDrawable(eDrawableBase* drawable)
+eElement* DrawableCircuit::GetAssociatedElectricElement(eDrawableBase* drawable)
 {
 	auto it = m_DrawableToElement.find(drawable);
-	if (it != m_DrawableToElement.end())
+	if (it != m_DrawableToElement.end()) [[unlikely]]
 		return it->second;
 	return nullptr;
 }
@@ -622,7 +622,7 @@ eElement* DrawableCircuit::GetElecticElementFromDrawable(eDrawableBase* drawable
 eNode* DrawableCircuit::GetElecticNode(std::shared_ptr<ConnectionDot> dot)
 {
 	auto it = m_Connections.find(dot);
-	if (it != m_Connections.end())
+	if (it != m_Connections.end()) [[unlikely]]
 		return it->second;
 	return nullptr;
 }
@@ -780,7 +780,7 @@ void CircuitEditor::AddOscilloscope(std::shared_ptr<eDrawableBase> drawable)
 
 	auto it = m_Oscilloscopes.insert(m_Oscilloscopes.end(), std::make_shared<Oscilloscope>(drawable));
 	(*it)->Init(&m_Oscilloscopes, it);
-	Simulation::RegisterOscilloscope(m_DrawableCircuit->GetElecticElementFromDrawable(drawable.get()), (*it));
+	Simulation::RegisterOscilloscope(m_DrawableCircuit->GetAssociatedElectricElement(drawable.get()), (*it));
 	m_DrawableToOscilloscope[drawable.get()] = *it;
 }
 
@@ -902,7 +902,7 @@ void CircuitEditor::DrawUI()
 			{
 				Wire* wire = drawable->As<Wire>();
 				ImGui::SameLine(200.0f);
-				ImGui::Text("I: %.3f A", m_DrawableCircuit->GetElecticElementFromDrawable(wire)->GetCurrent());
+				ImGui::Text("I: %.3f A", m_DrawableCircuit->GetAssociatedElectricElement(wire)->GetCurrent());
 				ImGui::SameLine(200 + ImGui::CalcTextSize("I: 0.0000f A").x);
 				if (ImGui::Button(vfmt("Edit Wire ##{}", i)))
 				{
@@ -990,7 +990,7 @@ void CircuitEditor::DrawUI()
 	if (ImGui::Button("Add Diode"))
 		m_DrawableCircuit->AddDiode();
 
-	if (ImGui::Button("Add Button"))
+	if (ImGui::Button("Add contacts group"))
 		m_DrawableCircuit->AddButton();
 
 	if (ImGui::Button("Add Neutral Coil"))
@@ -1051,7 +1051,7 @@ void CircuitEditor::DrawUI()
 				{
 					bool isWire = e->IsWire();
 
-					eElement* electricElem = m_DrawableCircuit->GetElecticElementFromDrawable(e.get());
+					eElement* electricElem = m_DrawableCircuit->GetAssociatedElectricElement(e.get());
 					ImGui::Text("Element: %s", isWire ? "Wire" : electricElem->GetTypeName());
 					ImGui::Text("Pin index: %d", pinIndex);
 				}

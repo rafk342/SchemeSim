@@ -578,9 +578,7 @@ void eDiode::Stamp(CircuitMtx& mtx, eNode* GndNode, double dt)
 	//     i  
 	// i | G |  b(i) -= Ieq  
 
-	// https://stemformulas.com/formulas/shockley-diode-model/
-	// // Shokley diode model 
-	// 
+	// Shokley diode model  
 	// G = (Is / Vt) * exp(Vd / Vt)  // conductivity
 	// Ieq = (Is * (exp(Vd / Vt) - 1)) - (G * Vd)  // equivalent current source
 
@@ -1288,10 +1286,9 @@ void eCoil::SetName(const std::string& name)
 }
 
 
-
+#if vComposeCoil
 eCoilWithRectifier::eCoilWithRectifier(Circuit& circ, double Inductance, double ReleaseDelay)
-	: l(Inductance/*, ReleaseDelay*/)
-	, r(10)
+	: r(10)
 	, wire(1e-3)
 	, m_InnerNodes{ circ.CreateNode(), circ.CreateNode() }
 	, m_Circuit(&circ)
@@ -1302,24 +1299,27 @@ eCoilWithRectifier::eCoilWithRectifier(Circuit& circ, double Inductance, double 
 	
 	eNode* n0 = m_InnerNodes[0];
 	eNode* n1 = m_InnerNodes[1];
+	l = m_Circuit->AddElement<eCoil>(Inductance, ReleaseDelay);
+	
 	d.GetCathodePin()->ConnectToNode(n0);
 	wire.GetEpin(0)->ConnectToNode(n0);
-	l.GetEpin(0)->ConnectToNode(n0);
+	l->GetEpin(0)->ConnectToNode(n0);
 
 	d.GetAnodePin()->ConnectToNode(n1);
 	r.GetEpin(0)->ConnectToNode(n1);
-	l.GetEpin(1)->ConnectToNode(n1);
+	l->GetEpin(1)->ConnectToNode(n1);
 }
 
 eCoilWithRectifier::~eCoilWithRectifier()
 {
+	m_Circuit->RemoveElement(l);
 	m_Circuit->RemoveNode(m_InnerNodes[0]);
 	m_Circuit->RemoveNode(m_InnerNodes[1]);
 }
 
 void eCoilWithRectifier::Stamp(CircuitMtx& mtx, eNode* GndNode, double dt)
 {
-	l.Stamp(mtx, GndNode, dt);
+	l->Stamp(mtx, GndNode, dt);
 	d.Stamp(mtx, GndNode, dt);
 	r.Stamp(mtx, GndNode, dt);
 	wire.Stamp(mtx, GndNode, dt);
@@ -1327,7 +1327,7 @@ void eCoilWithRectifier::Stamp(CircuitMtx& mtx, eNode* GndNode, double dt)
 
 void eCoilWithRectifier::Update(CircuitMtx& mtx, double dt)
 {
-	l.Update(mtx, dt);
+	l->Update(mtx, dt);
 	d.Update(mtx, dt);
 	r.Update(mtx, dt);
 	wire.Update(mtx, dt);
@@ -1335,15 +1335,16 @@ void eCoilWithRectifier::Update(CircuitMtx& mtx, double dt)
 
 void eCoilWithRectifier::InitMatrix(CircuitMtx& mtx)
 {
-	l.InitMatrix(mtx);
+	l->InitMatrix(mtx);
 	d.InitMatrix(mtx);
 	r.InitMatrix(mtx);
 	wire.InitMatrix(mtx);
 }
 
+
 void eCoilWithRectifier::Reset()
 {
-	l.Reset();
+	l->Reset();
 	d.Reset();
 	r.Reset();
 	wire.Reset();
@@ -1356,11 +1357,56 @@ ePin* eCoilWithRectifier::GetEpin(int num)
 
 double eCoilWithRectifier::GetCurrent()
 {
-	return l.GetCurrent();
+	return l->GetCurrent();
 }
 
 double eCoilWithRectifier::GetVoltDrop()
 {
-	return l.GetVoltDrop();
+	return l->GetVoltDrop();
 }
 
+#else
+eCoilWithRectifier::eCoilWithRectifier(Circuit& circ, double Inductance, double ReleaseDelay)
+	: /*eCoil*/eInductor(Inductance/*, ReleaseDelay*/)
+	, m_InnerNodes{ circ.CreateNode(), circ.CreateNode() }
+	, m_Circuit(&circ)
+{
+#if 0
+	// --wire--n0----|<|----n1-----r----
+	//          |           |
+	//          |----l------|
+#endif
+
+
+	// --wire--n0----l------n1-----r----
+	eNode* n0 = m_InnerNodes[0];
+	eNode* n1 = m_InnerNodes[1];
+
+	wire = m_Circuit->AddElement<eResistor>(1e-3);
+	r = m_Circuit->AddElement<eResistor>(5);
+	
+	wire->GetEpin(0)->ConnectToNode(n0);
+	eInductor::GetEpin(0)->ConnectToNode(n0);
+
+	r->GetEpin(1)->ConnectToNode(n1);
+	eInductor::GetEpin(1)->ConnectToNode(n1);
+
+	//d.GetAnodePin()->ConnectToNode(n1);
+	//d.GetCathodePin()->ConnectToNode(n0);
+}
+
+eCoilWithRectifier::~eCoilWithRectifier()
+{
+	m_Circuit->RemoveElement(r);
+	m_Circuit->RemoveElement(wire);
+	m_Circuit->RemoveNode(m_InnerNodes[0]);
+	m_Circuit->RemoveNode(m_InnerNodes[1]);
+}
+
+ePin* eCoilWithRectifier::GetEpin(int num)
+{
+	return num == 0 ? r->GetEpin(0) : wire->GetEpin(1);
+}
+
+
+#endif

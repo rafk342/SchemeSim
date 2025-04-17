@@ -111,7 +111,7 @@ void CircuitParser::LoadFromFile(const std::filesystem::path& path)
 
 				drawableBase->SetPosition(pos);
 				drawableBase->SetRotation(rot);
-				drawableBase->Parser_ReadElementData(drawableCirc->GetElecticElementFromDrawable(drawableBase.get()), data);
+				drawableBase->Parser_ReadElementData(drawableCirc->GetAssociatedElectricElement(drawableBase.get()), data);
 				if (flippedX)
 					drawableBase->Flip(flipAxis::X);
 				if (flippedY)
@@ -187,7 +187,7 @@ void CircuitParser::SaveToFile(const std::filesystem::path& path)
 		WriteInt(file, int(drawableBase->IsFlippedOverX()));
 		WriteInt(file, int(drawableBase->IsFlippedOverY()));
 
-		std::string data = drawableBase->Parser_WriteElementData(drawableCirc->GetElecticElementFromDrawable(drawableBase.get()));
+		std::string data = drawableBase->Parser_WriteElementData(drawableCirc->GetAssociatedElectricElement(drawableBase.get()));
 		file << data << "\n";
 	}
 	file << "ELEMENTS_END\n";
