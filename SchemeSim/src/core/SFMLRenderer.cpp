@@ -62,11 +62,11 @@ SFMLRenderer* SFMLRenderer::Init()
 	settings.antiAliasingLevel = 8;
 
 	m_Window = std::make_unique<sf::RenderWindow>(mode, "Wnd", sf::Style::Default, sf::State::Windowed, settings);
-	m_Window->setFramerateLimit(240);
+	m_Window->setFramerateLimit(250);
 	
 	m_view.setSize(sf::Vector2f(m_Window->getSize().x, m_Window->getSize().y));
 	m_view.setCenter(sf::Vector2f(m_Window->getSize()) / 2.0f);
-	m_view.zoom(1.65);
+	m_view.zoom(1);
 	m_Window->setView(m_view);
 
 	SM_ASSERT(m_font.openFromFile("assets\\calibri.ttf"), "SFMLRenderer::Init() -> Failed to load font");
@@ -201,6 +201,22 @@ void DrawGrid(const sf::Vector2f& gridSize, const sf::Vector2f& cellSize, const 
 }
 
 
+class CircuitRef : WidgetBase
+{
+public:
+	CircuitRef()
+		: WidgetBase("assets\\circuitRef1.png")
+	{
+		GetTexture().setSmooth(true);
+	}
+
+	void Draw(sf::Color col)
+	{
+		m_sprite.setColor(col);
+		dlDrawList::getWindow()->draw(m_sprite);
+	}
+};
+
 SFMLRenderer* SFMLRenderer::OnRender()
 {
 	sf::Vector2f PrevMousePos{};
@@ -210,27 +226,8 @@ SFMLRenderer* SFMLRenderer::OnRender()
 	CircuitEditor editor(drawableCircuit);
 	Simulation::Init(&circuit);
 
-	Timer timer;
+	CircuitRef circuitRef;
 
-	//Circuit::ResultsType results = circuit.Test2(10);
-	//circuit.Reset();
-	//std::cout << "-------------------\n";
-	//circuit.Test2();
-	//circuit.Reset();
-	//std::cout << "-------------------\n";
-	//circuit.Test3();
-	//circuit.Reset();
-	//std::cout << "-------------------\n";
-
-	//float Time = 0.5;
-	//timer.Start();
-	//Circuit::ResultsType results = circuit.Test3(Time);
-	//circuit.Reset();
-
-//	timer.Stop();
-
-	//std::cout << "Elapsed Time : " << std::format("{:.10f}", timer.GetElapsedSeconds()) << " s\n";
-	//CircuitRef circuitRef;
 
 #if CREATE_WINDOW
 
@@ -246,7 +243,7 @@ SFMLRenderer* SFMLRenderer::OnRender()
 		m_DeltaMouse = CurrentMousePos - PrevMousePos;
 		PrevMousePos = CurrentMousePos;
 
-		Simulation::Simulate(dt.asSeconds());
+		Simulation::Simulate(m_frameTime);
 
 		HandleEvents();
 		
@@ -257,15 +254,26 @@ SFMLRenderer* SFMLRenderer::OnRender()
 		
 
 		{
-			//circuitRef.Draw();
-			editor.DrawUI();
-
 			ImGui::ShowDemoWindow();
 			ImPlot::ShowDemoWindow();
 
-			DrawGrid({ 10000.0f,10000.0f }, { 100.0f, 100.0f }, sf::Color(164, 164, 164, 255));
+			static sf::Color circRefColor(255, 255, 255, 50);
+			if (ImGui::Begin("wnd1"))
+			{
+				float col[4] = { circRefColor.r / 255.0f, circRefColor.g / 255.0f, circRefColor.b / 255.0f, circRefColor.a / 255.0f };
+				
+				if (ImGui::ColorEdit4("CircuitRef color", col))
+					circRefColor = sf::Color(col[0] * 255, col[1] * 255, col[2] * 255, col[3] * 255);		
 
-			drawableCircuit.Draw(dt.asSeconds());
+				circuitRef.Draw(circRefColor);
+			}
+			ImGui::End();
+
+			editor.DrawUI();
+
+			DrawGrid({ 10000.0f,10000.0f }, { 100.0f, 100.0f }, sf::Color(164, 164, 164, 255));
+			drawText(vfmt("FPS: {:.3f}", m_fps), 10, 10, 150, sf::Color(0, 0, 0, 255));
+			drawableCircuit.Draw(m_frameTime);
 		}
 
 		ImGui::SFML::Render(*m_Window);
@@ -287,8 +295,13 @@ void SFMLRenderer::HandleEvents()
 	if (m_Window->hasFocus())
 		if (sf::Mouse::isButtonPressed(sf::Mouse::Button::Right))
 			if (!ImGui::GetIO().WantCaptureMouse)
-				m_view.move(-(m_DeltaMouse));
-
+			{
+				sf::Vector2f scaledMove = {
+					m_DeltaMouse.x * (m_view.getSize().x / m_Window->getSize().x),
+					m_DeltaMouse.y * (m_view.getSize().y / m_Window->getSize().y)
+				};
+				m_view.move(-scaledMove);
+			}
 
 	while (std::optional event = m_Window->pollEvent())
 	{
@@ -319,7 +332,7 @@ void SFMLRenderer::HandleEvents()
 
 				else if (scrolledEvent->delta < 0)
 					m_view.zoom(1.05f);
-			}	
+			}
 		}
 	}
 }

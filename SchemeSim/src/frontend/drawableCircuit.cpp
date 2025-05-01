@@ -19,12 +19,23 @@ void ConnectionDot::UpdateVisibility()
 			}
 			return false;
 		});
+
+	u16 NumNonHiddenConnections = std::ranges::count_if(m_ConnectedElements, [](std::pair<std::weak_ptr<eDrawableBase>, PinIndex>& pair)
+		{
+			if (std::shared_ptr drawable = pair.first.lock())
+			{
+				return !drawable->Hide();
+			}
+			return false;
+		});
+
+	m_IsVisible = !m_ToElemPin && NumNonHiddenConnections > 2;
 }
 
 
 void ConnectionDot::Draw()
 {
-	if (!m_ToElemPin)
+	if (m_IsVisible)
 		DrawCircle(m_Position, (Wire::WireThickness / 2.0f) * 2.0f, sf::Color::Black);
 
 	if (IsHoveredInUi)
@@ -228,7 +239,7 @@ void Wire::Draw()
 sf::Vector2f Wire::GetGlobalPinPosition(int n)
 {
 	if (m_Segments.empty())
-		return sf::Vector2f(0, 0);
+		return sf::Vector2f(FLT_MAX, FLT_MAX);
 
 	if (n == 0)
 		return m_Segments[0].vStart;
@@ -281,6 +292,13 @@ void Wire::UpdateColor(DrawableCircuit& circuit)
 	if (!elem)
 		return;
 
+	if (Hide())
+	{
+		m_StartColor = sf::Color(0, 0, 0, 20);
+		m_EndColor = sf::Color(0, 0, 0, 20);
+		return;
+	}
+
 	double StartVolt = 0.0;
 	double EndVolt = 0.0;
 	if (auto dot = m_StartDot.lock())
@@ -330,17 +348,28 @@ void Wire::UpdateColor(DrawableCircuit& circuit)
 
 void Wire::DrawCurrentDots(eElement* elem)
 {
+	if (Hide())
+		return;
+
 	const float spacing = 75.0f;
 	float current = static_cast<eResistor*>(elem)->GetCurrent();
-	if (Simulation::GetState() == SIM_PAUSED) 
+	float t = math::NormalizeValue(0.0, 0.5, std::clamp(std::abs(current), 0.0f, 0.5f));
+	sf::Color color = lerpColor(sf::Color::Black, CurrentDotsColor, t);
+
+	if (Simulation::GetState() == SIM_PAUSED)
 		current = 0.0f;
+
+	if (Simulation::GetState() == SIM_STOPPED)
+		return;
 
 	for (auto& seg : m_Segments)
 	{
 		seg.curcount += current * (std::pow(CurrentSpeedScalar, 2.0f) / 100.0f);
-		if (std::isinf(seg.curcount)) [[unlikely]]
+		if (std::isinf(seg.curcount) || std::isnan(seg.curcount)) [[unlikely]]
 			seg.curcount = 0.0f;
 		
+		seg.curcount = std::fmod(seg.curcount, spacing);
+
 		sf::Vector2f dir = seg.vEnd - seg.vStart;
 		sf::Vector2f normalized = dir.normalized();
 		float length = dir.length();
@@ -352,7 +381,7 @@ void Wire::DrawCurrentDots(eElement* elem)
 		for (float di = SpacingOffset; di < length; di += spacing)
 		{
 			sf::Vector2f DotPos = seg.vStart + (normalized * di);
-			DrawCircle(DotPos, (Wire::WireThickness / 2.0f) * 0.7f, CurrentDotsColor);
+			DrawCircle(DotPos, (Wire::WireThickness / 2.0f) * 0.7f, color);
 		}
 	}
 }
@@ -361,7 +390,7 @@ void Wire::DrawCurrentDots(eElement* elem)
 template<Wire::PinPoint StartOrEnd>
 void Wire::ConnectToDotAt(std::shared_ptr<ConnectionDot> dot)
 {
-	DisconnectFromDotAt<StartOrEnd>();
+	DisconnectFromConnectionAt<StartOrEnd>();
 
 	if constexpr (StartOrEnd == Start)
 	{
@@ -381,7 +410,7 @@ void Wire::ConnectToDotAt(std::shared_ptr<ConnectionDot> dot)
 
 
 template<Wire::PinPoint StartOrEnd>
-void Wire::DisconnectFromDotAt()
+void Wire::DisconnectFromConnectionAt()
 {
 	if (StartOrEnd == Start && !m_StartDot.expired())
 	{
@@ -470,7 +499,6 @@ void Oscilloscope::Reset()
 //											DrawableCircuit
 
 
-
 std::shared_ptr<ConnectionDot> DrawableCircuit::SplitWire(std::shared_ptr<eDrawableBase> wireBase, u64 SegmentIndex, sf::Vector2f SplitPoint)
 {
 	if (!wireBase || !wireBase->IsWire())
@@ -506,7 +534,8 @@ void DrawableCircuit::SyncWithCircuit()
 		{
 			if (auto drawable = WeakDrawable.lock())
 			{
-				GetAssociatedElectricElement(drawable.get())->GetEpin(pinIndex)->ConnectToNode(node);
+				GetAssociatedElectricElement(drawable.get()) 
+					->GetEpin(pinIndex)->ConnectToNode(node);
 			}
 		}
 	}
@@ -514,16 +543,17 @@ void DrawableCircuit::SyncWithCircuit()
 	m_Circuit->RebuildMatrix();
 }
 
+
 void DrawableCircuit::Destroy()
 {
 	m_DrawableElements.clear();
-	for (auto& [ptr, elem] : m_DrawableToElement)
+	for (auto& [_, elem] : m_DrawableToElement)
 	{
 		m_Circuit->RemoveElement(elem);
 	}
 	m_DrawableToElement.clear();
 
-	for (auto& [dot, node] : m_Connections)
+	for (auto& [_, node] : m_Connections)
 	{
 		m_Circuit->RemoveNode(node);
 	}
@@ -538,7 +568,17 @@ void DrawableCircuit::Draw(float frameTime)
 		if (elem->IsWire())
 			continue;
 
-		elem->Draw();
+		if (elem->Hide())
+		{
+			elem->SetColor(sf::Color(255, 255, 255, 20));
+			elem->Draw();
+		}
+		else
+		{
+			elem->SetColor(sf::Color(255, 255, 255, 255));
+			elem->Draw();
+		}
+
 	}
 
 	for (auto& elem : m_DrawableElements)
@@ -549,13 +589,13 @@ void DrawableCircuit::Draw(float frameTime)
 		Wire* wire = elem->As<Wire>();
 		wire->UpdateColor(*this);
 		wire->Draw();
-		wire->DrawCurrentDots(GetAssociatedElectricElement(elem.get()));
+		wire->DrawCurrentDots(GetAssociatedElectricElement(elem.get()));	
 	}
 
 	for (auto& [dot, node] : m_Connections)
 	{
 		dot->Draw();
-		drawText(vfmt("{}", node->GetIndex()), dot->GetPosition().x, dot->GetPosition().y, 40, sf::Color::Red);
+	//	drawText(vfmt("{}", node->GetIndex()), dot->GetPosition().x, dot->GetPosition().y, 40, sf::Color::Red);
 	}
 
 	for (auto& elem : m_DrawableElements)
@@ -611,20 +651,53 @@ void DrawableCircuit::UpdateWireColors()
 	}
 }
 
+
 eElement* DrawableCircuit::GetAssociatedElectricElement(eDrawableBase* drawable)
 {
 	auto it = m_DrawableToElement.find(drawable);
 	if (it != m_DrawableToElement.end()) [[unlikely]]
 		return it->second;
+
+	SM_ASSERT(false, "Drawable element was not found in circuit");
 	return nullptr;
 }
+
 
 eNode* DrawableCircuit::GetElecticNode(std::shared_ptr<ConnectionDot> dot)
 {
 	auto it = m_Connections.find(dot);
 	if (it != m_Connections.end()) [[unlikely]]
 		return it->second;
+
+	SM_ASSERT(false, "Connection dot was not found in circuit");
 	return nullptr;
+}
+
+
+std::shared_ptr<eDrawableBase> DrawableCircuit::CreateElement(DrawableType type)
+{
+	switch (type)
+	{
+	case DRAWABLE_RESISTOR:				return AddResistor();
+	case DRAWABLE_BATTERY:				return AddBattery();
+	case DRAWABLE_CAPACITOR:			return AddCapacitor();
+	case DRAWABLE_INDUCTOR:				return AddInductor();
+	case DRAWABLE_DIODE:				return AddDiode();
+	case DRAWABLE_RELAY_CONTACT_GROUP:	return AddButton();
+	case DRAWABLE_RELAY_COIL_NEUTRAL:	return AddNeutralRelayCoil();
+	case DRAWABLE_RELAY_COIL_NEUTRAL_THIRD_RELYABILITY_CLASS:	return AddNeutralRelayCoil3Class();
+	case DRAWABLE_RELAY_COIL_NEUTRAL_WITH_SWITCH_OFF_DELAY:		return AddNeutralRelayCoilWithDelay();
+	case DRAWABLE_RELAY_COIL_NEUTRAL_WITH_RECTIFIER:			return AddNeutralRelayCoilWithDiode();
+	case DRAWABLE_RELAY_COIL_NEUTRAL_WITH_SWITCH_OFF_DELAY_THIRD_RELYABILITY_CLASS:	return AddNeutralRelayCoilWithDelay3Class();
+	case DRAWABLE_DIODE_BRIDGE:			return AddDiodeBridge();
+	case DRAWABLE_TRANSFORMER:			return AddTransformer();
+	case DRAWABLE_TRANSFORMER_WITH_MIDDLE_PIN: return AddTransformerWithMiddlePin();
+	case DRAWABLE_KPTSH:				return AddKPTSH();
+	case DRAWABLE_ZBF:					return AddZBF();
+	default:
+		SM_ASSERT(false, "Unknown drawable type");
+		std::unreachable();
+	}
 }
 
 
@@ -678,7 +751,7 @@ std::optional<std::shared_ptr<ConnectionDot>> CircuitEditor::GetClosestConnectio
 
 std::optional<CircuitEditor::ClosestPinData> CircuitEditor::GetClosestElementPinInfo(sf::Vector2f pos)
 {
-	for (auto& elem : m_DrawableCircuit->m_DrawableElements)
+	for (auto& elem : m_DrawableCircuit->GetDrawableElements())
 	{
 		if (elem->IsWire())
 			continue;
@@ -718,7 +791,6 @@ std::optional<CircuitEditor::ClosestWirePointInfo> CircuitEditor::GetClosestPoin
 
 			float t = dirToPoint.dot(dir) / (length * length);
 			t = std::clamp(t, 0.0f, 1.0f);
-
 			return segStart + dir * t;
 		};
 
@@ -753,7 +825,7 @@ std::optional<CircuitEditor::ClosestWirePointInfo> CircuitEditor::GetClosestPoin
 
 std::optional<std::pair<std::shared_ptr<eDrawableBase>, u64>> CircuitEditor::SearchForNearestWire(const sf::Vector2f& MousePos, sf::Vector2f& OutEnd, std::shared_ptr<eDrawableBase> selfWire)
 {
-	for (auto& elem : m_DrawableCircuit->m_DrawableElements)
+	for (auto& elem : m_DrawableCircuit->GetDrawableElements())
 	{
 		if (elem == selfWire)
 			continue;
@@ -781,7 +853,7 @@ void CircuitEditor::AddOscilloscope(std::shared_ptr<eDrawableBase> drawable)
 	auto it = m_Oscilloscopes.insert(m_Oscilloscopes.end(), std::make_shared<Oscilloscope>(drawable));
 	(*it)->Init(&m_Oscilloscopes, it);
 	Simulation::RegisterOscilloscope(m_DrawableCircuit->GetAssociatedElectricElement(drawable.get()), (*it));
-	m_DrawableToOscilloscope[drawable.get()] = *it;
+	m_DrawableToOscilloscope[drawable.get()] = *it;	
 }
 
 void CircuitEditor::ResetOscilloscopes()
@@ -819,296 +891,429 @@ void CircuitEditor::DrawUI()
 	auto PushTextColor = [](sf::Color color) { ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(color.r / 255.0f, color.g / 255.0f, color.b / 255.0f, color.a / 255.0f)); };
 	auto PopTextColor = [] { ImGui::PopStyleColor(); };
 
+	m_HoveredElement = nullptr;
+	if (ImGui::Begin("Editor"))
+	{
+		//if (m_EditableWire)
+		//{
+		//	ImGui::Text("Editing Wire");
+		//	ImGui::Text("Wire index: %d", 
+		//		std::distance( m_DrawableCircuit->GetDrawableElements().begin(),
+		//				std::ranges::find_if(m_DrawableCircuit->GetDrawableElements(), [this](const std::shared_ptr<eDrawableBase>& e) { return e.get() == m_EditableWire; })));
+		//}
 
-	ImGui::Begin("Editor");
-
-	if (m_EditableWire)
-		ImGui::Text("Editing Wire");
-
-
-	sf::Vector2f mousePos = gSFMLRenderer.GetWorldMousePos();
-	static sf::Vector2f DragOffset{};
+		sf::Vector2f mousePos = gSFMLRenderer.GetWorldMousePos();
+		static sf::Vector2f DragOffset{};
 	
-	if (ImGui::Button("Export"))
-	{
-		m_Parser.SaveToFile("circuit.txt");
-	}
-
-	if (ImGui::Button("Import"))
-	{
-		m_Parser.LoadFromFile("circuit.txt");
-		m_DrawableCircuit->SyncWithCircuit();
-		//Simulation::SetState(SIM_ON_START);
-	}
-
-	auto state = Simulation::GetState();
-	ImGui::Text(vfmt("Simulation state : {}",
-		state == SIM_STOPPED ? "STOPPED" : 
-		state == SIM_RUNNING ? "RUNNING" : 
-		state == SIM_ON_START ? "SIM_ON_START" : "PAUSED"));
-
-	if (ImGui::Button("Start sim"))
-	{
-		m_DrawableCircuit->SyncWithCircuit();
-		Simulation::SetState(SIM_ON_START);
-		ResetOscilloscopes();
-	}
-
-	if (ImGui::Button("Stop sim"))
-		Simulation::SetState(SIM_STOPPED);
-
-	if (ImGui::Button("Pause sim"))
-		Simulation::SetState(SIM_PAUSED);
-
-
-	if (ImGui::Button("Continue sim"))
-		Simulation::SetState(SIM_RUNNING);
-
-
-	ImGui::Text("t: %.6f s", Simulation::CircTime());
-	float min = 0.01f;
-	float max = 1.0f;
-	ImGui::SliderScalar("Sim speed", ImGuiDataType_Float, &Simulation::SimSpeed(), &min, &max, "%.5f");
-
-
-
-	if (ImGui::BeginTable("Elements", 2, ImGuiTableFlags_Borders))
-	{
-		ImGui::TableSetupColumn("ElementsColumn");
-		ImGui::TableSetupColumn("Remove", ImGuiTableColumnFlags_WidthFixed, ImGui::CalcTextSize("Remove").x + 5);
-
-		size_t toRemove = m_DrawableCircuit->m_DrawableElements.size();
-		for (size_t i = 0; i < m_DrawableCircuit->m_DrawableElements.size(); i++)
+		if (ImGui::Button("Export"))
 		{
-			auto& drawable = m_DrawableCircuit->m_DrawableElements[i];
-			auto* elem = m_DrawableCircuit->m_DrawableToElement.at(drawable.get());
-			
-			bool isWire = drawable->IsWire();
-			
-			bool isHovered = !isWire && drawable->IsHovered();
+			m_Parser.SaveToFile("circuit.txt");
+		}
 
-			ImGui::TableNextRow();
-			ImGui::TableNextColumn();
+		if (ImGui::Button("Import"))
+		{
+			m_Parser.LoadFromFile("circuit.txt");
+			m_DrawableCircuit->SyncWithCircuit();
+			m_Oscilloscopes.clear();
+			m_DrawableToOscilloscope.clear();
+		}
 
-			if (isHovered)
-				PushTextColor(sf::Color::Red);
-			ImGui::Text(vfmt("Elements[{}]: {}",i, isWire ? "Wire" : elem->GetTypeName()));
-			
-			if (isHovered)
-				PopTextColor();
+		auto state = Simulation::GetState();
+		ImGui::Text(vfmt("Simulation state : {}",
+			state == SIM_STOPPED ? "STOPPED" : 
+			state == SIM_RUNNING ? "RUNNING" : 
+			state == SIM_ON_START ? "SIM_ON_START" : "PAUSED"));
+
+		if (ImGui::Button("Start sim"))
+		{
+			m_DrawableCircuit->SyncWithCircuit();
+			Simulation::SetState(SIM_ON_START);
+			ResetOscilloscopes();
+		}
+
+		if (ImGui::Button("Stop sim"))
+			Simulation::SetState(SIM_STOPPED);
+
+		if (ImGui::Button("Pause sim"))
+			Simulation::SetState(SIM_PAUSED);
+
+		if (ImGui::Button("Continue sim"))
+			Simulation::SetState(SIM_RUNNING);
 
 
-			if (isWire)
+		ImGui::Text("t: %.6f s", Simulation::CircTime());
+		float min = 0.01f;
+		float max = 1.0f;
+		ImGui::SliderScalar("Sim speed", ImGuiDataType_Float, &Simulation::SimSpeed(), &min, &max, "%.5f");
+
+
+
+		size_t toRemove = m_DrawableCircuit->GetDrawableElements().size();
+		if (ImGui::CollapsingHeader("Drawables List"))
+		{
+			if (ImGui::BeginTable("Elements", 2, ImGuiTableFlags_Borders))
 			{
-				Wire* wire = drawable->As<Wire>();
-				ImGui::SameLine(200.0f);
-				ImGui::Text("I: %.3f A", m_DrawableCircuit->GetAssociatedElectricElement(wire)->GetCurrent());
-				ImGui::SameLine(200 + ImGui::CalcTextSize("I: 0.0000f A").x);
-				if (ImGui::Button(vfmt("Edit Wire ##{}", i)))
+				ImGui::TableSetupColumn("ElementsColumn");
+				ImGui::TableSetupColumn("Remove", ImGuiTableColumnFlags_WidthFixed, ImGui::CalcTextSize("Remove").x + 5);
+
+				for (size_t i = 0; i < m_DrawableCircuit->GetDrawableElements().size(); i++)
 				{
-					m_EditableWire = wire;
-					m_WireEditOnStart = true;
+					auto& drawable = m_DrawableCircuit->GetDrawableElements()[i];
+					auto* elem = m_DrawableCircuit->GetAssociatedElectricElement(drawable.get());
+			
+					bool isWire = drawable->IsWire();
+					bool isHovered = !isWire && drawable->IsHovered();
+
+
+					ImGui::TableNextRow();
+					ImGui::TableNextColumn();
+
+					if (isHovered)
+						PushTextColor(sf::Color::Red);
+					ImGui::Text(vfmt("Elements[{}]: {}",i, isWire ? "Wire" : drawable->GetTypeName()));
+			
+					if (isHovered)
+						PopTextColor();
+
+
+					if (isWire)
+					{
+						Wire* wire = drawable->As<Wire>();
+						ImGui::SameLine(200.0f);
+						ImGui::Text("I: %.3f A", m_DrawableCircuit->GetAssociatedElectricElement(wire)->GetCurrent());
+						ImGui::SameLine(200 + ImGui::CalcTextSize("I: 0.0000f A").x);
+						if (ImGui::Button(vfmt("Edit Wire ##{}", i)))
+						{
+							m_EditableWire = wire;
+							m_WireEditOnStart = true;
+							m_EditableWire->DisconnectFromConnectionAt<Wire::Start>();
+							m_EditableWire->DisconnectFromConnectionAt<Wire::End>();
+						}
+				
+						wire->IsHoveredInUi = ImGui::IsItemHovered();
+					}
+					else
+					{
+						if (ImGui::TreeNode(vfmt("Settings##{}", i)))
+						{
+							ImGui::Indent();
+							drawable->UIParams(elem);
+							ImGui::Unindent();
+
+							ImGui::TreePop();
+						}
+
+						if (!m_DrawableToOscilloscope.contains(drawable.get()))
+						{
+							if (drawable->CanHaveOscilloscope() && ImGui::Button(vfmt("Connect oscilloscope ##{}", i)))
+								AddOscilloscope(drawable);
+						}
+						else
+						{
+							ImGui::Separator();
+							if (ImGui::TreeNode(vfmt("Oscilloscope##{}", u64(drawable.get()))))
+							{
+								if (auto osc = m_DrawableToOscilloscope.at(drawable.get()).lock())
+									osc->DrawPlot();
+								else
+									m_DrawableToOscilloscope.erase(drawable.get());
+
+								ImGui::TreePop();
+							}
+						}
+					}
+
+					ImGui::TableNextColumn();
+					if (ImGui::Button(vfmt("[X]##{}", i)))
+						toRemove = i;
 				}
+	
 
-				if (ImGui::IsItemHovered())
-					wire->IsHoveredInUi = true;
-				else
-					wire->IsHoveredInUi = false;
+				ImGui::EndTable();
+			}
+		}
 
+
+
+		for (size_t i = 0; i < m_DrawableCircuit->GetDrawableElements().size(); i++)
+		{
+			auto& drawable = m_DrawableCircuit->GetDrawableElements()[i];
+			auto* elem = m_DrawableCircuit->GetAssociatedElectricElement(drawable.get());
+
+			bool isWire = drawable->IsWire();
+			bool isHovered = !isWire && drawable->IsHovered();
+			if (isHovered)
+				m_HoveredElement = drawable.get();
+
+			if (isHovered && ImGui::IsMouseDoubleClicked(ImGuiMouseButton_Left) && !ImGui::GetIO().WantCaptureMouse)
+			{
+				ImGui::OpenPopup("my_settings");
+				m_EditableElement = drawable.get();
+			}
+
+			if (isHovered && 
+				ImGui::IsMouseClicked(ImGuiMouseButton_Left) && 
+				!ImGui::IsMouseDoubleClicked(ImGuiMouseButton_Left) && 
+				!m_DraggableElement && 
+				!m_EditableWire && 
+				!ImGui::GetIO().WantCaptureMouse)
+			{
+				m_DraggableElement = drawable.get();
+				DragOffset = mousePos - drawable->GetPosition();
+			}
+		}
+
+
+		if (ImGui::BeginPopup("my_settings"))
+		{
+			if (m_EditableElement == nullptr)
+			{
+				ImGui::CloseCurrentPopup();
+				ImGui::EndPopup();
 			}
 			else
 			{
-				if (ImGui::TreeNode(vfmt("Settings##{}", i)))
+				ImGui::Text("Settings");
+				ImGui::Checkbox("Hide", &m_EditableElement->Hide());
+				ImGui::Separator();
+				ImGui::Text("Element: %s", m_EditableElement->GetTypeName());
+				m_EditableElement->UIParams(m_DrawableCircuit->GetAssociatedElectricElement(m_EditableElement));
+				ImGui::Separator();
+				if (!m_DrawableToOscilloscope.contains(m_EditableElement))
 				{
-						ImGui::Indent();
-						drawable->UIParams(elem);
-						ImGui::Unindent();
-
-					ImGui::TreePop();
-				}
-
-				if (isHovered && ImGui::IsMouseClicked(ImGuiMouseButton_Left) && !m_DraggableElement && !m_EditableWire)
-				{
-					m_DraggableElement = drawable.get();
-					DragOffset = mousePos - drawable->GetPosition();
-				}
-
-				if (!m_DrawableToOscilloscope.contains(drawable.get()))
-				{
-					if (ImGui::Button(vfmt("Connect oscilloscope ##{}", i)))
-					{
-						AddOscilloscope(drawable);
-					}
+					if (m_EditableElement->CanHaveOscilloscope() && ImGui::Button(vfmt("Connect oscilloscope ##{}", u64(m_EditableElement))))
+						AddOscilloscope(m_EditableElement->GetSharedInstance());
 				}
 				else
 				{
 					ImGui::Separator();
-					if (ImGui::TreeNode(vfmt("Oscilloscope##{}", u64(drawable.get()))))
+					if (ImGui::TreeNode(vfmt("Oscilloscope##{}", u64(m_EditableElement))))
 					{
-						if (auto osc = m_DrawableToOscilloscope.at(drawable.get()).lock())
+						if (auto osc = m_DrawableToOscilloscope.at(m_EditableElement).lock())
 							osc->DrawPlot();
 						else
-							m_DrawableToOscilloscope.erase(drawable.get());
+							m_DrawableToOscilloscope.erase(m_EditableElement);
 
 						ImGui::TreePop();
 					}
 				}
-			}
 
-			ImGui::TableNextColumn();
-			if (ImGui::Button(vfmt("[X]##{}", i)))
-				toRemove = i;
+				if (ImGui::Button(vfmt("Delete##{}", u64(m_EditableElement))))
+				{
+					toRemove = std::distance(m_DrawableCircuit->GetDrawableElements().begin(),
+						std::ranges::find(m_DrawableCircuit->GetDrawableElements(), m_EditableElement->GetSharedInstance()));
+
+					m_EditableElement = nullptr;
+				}
+				ImGui::EndPopup();
+			}
+		}
+		else
+		{
+			m_EditableElement = nullptr;
 		}
 
-		if (toRemove != m_DrawableCircuit->m_DrawableElements.size())
+		if (!m_Oscilloscopes.empty())
 		{
-			if (m_DrawableToOscilloscope.contains(m_DrawableCircuit->m_DrawableElements[toRemove].get()))
-				RemoveOscilloscope(m_DrawableCircuit->m_DrawableElements[toRemove]);
-			
+			if (ImGui::Begin("Oscilloscopes"))
+			{
+				ImGui::Text("Oscilloscopes");
+				ImGui::Separator();
+				for (auto& [drawable, osc] : m_DrawableToOscilloscope)
+				{
+					bool thisDrawableHovered = m_HoveredElement == drawable;
+					{
+						if (thisDrawableHovered) PushTextColor(sf::Color::Red);
+						ImGui::Text(drawable->GetTypeName());
+						if (thisDrawableHovered) PopTextColor();
+					}
+
+					if (drawable->IsCoil())
+					{
+						ImGui::Text(static_cast<eCoil*>(m_DrawableCircuit->GetAssociatedElectricElement(drawable))->GetName().c_str());
+					}
+
+					if (osc.lock())
+						osc.lock()->DrawPlot();
+					else
+						m_DrawableToOscilloscope.erase(drawable);
+
+					ImGui::Separator();
+				}
+			}
+			ImGui::End();
+		}
+
+		if (toRemove != m_DrawableCircuit->GetDrawableElements().size())
+		{
+			if (m_DrawableToOscilloscope.contains(m_DrawableCircuit->GetDrawableElements()[toRemove].get()))
+				RemoveOscilloscope(m_DrawableCircuit->GetDrawableElements()[toRemove]);
+
 			m_DrawableCircuit->RemoveElement(toRemove);
 			m_DrawableCircuit->SyncWithCircuit();
 		}
-		ImGui::EndTable();
-	}
 
 
-	if (ImGui::Button("Add Wire"))
-		m_DrawableCircuit->AddWire();
+
+		if (ImGui::Button("Add Wire"))
+			m_DrawableCircuit->AddWire();
 	
-	if (ImGui::Button("Add Battery"))
-		m_DrawableCircuit->AddBattery();
-
-	if (ImGui::Button("Add Resistor"))
-		m_DrawableCircuit->AddResistor();
-
-	if (ImGui::Button("Add Capacitor"))
-		m_DrawableCircuit->AddCapacitor();
-
-	if (ImGui::Button("Add Inductor"))
-		m_DrawableCircuit->AddInductor();
-
-	if (ImGui::Button("Add Diode"))
-		m_DrawableCircuit->AddDiode();
-
-	if (ImGui::Button("Add contacts group"))
-		m_DrawableCircuit->AddButton();
-
-	if (ImGui::Button("Add Neutral Coil"))
-		m_DrawableCircuit->AddNeutralRelayCoil();
-
-	if (ImGui::Button("Add neutral coil with 3rd relyability class"))
-		m_DrawableCircuit->AddNeutralRelayCoil3Class();
-
-	if (ImGui::Button("Add neitral coil with delay"))
-		m_DrawableCircuit->AddNeutralRelayCoilWithDelay();
-
-	if (ImGui::Button("Add neutral coil with delay and 3rd relyability class"))
-		m_DrawableCircuit->AddNeutralRelayCoilWithDelay3Class();
-
-	if (ImGui::Button("Add neutral coil with rectifier"))
-		m_DrawableCircuit->AddNeutralRelayCoilWithDiode();
-
-	if (ImGui::Button("Add Transformer"))
-		m_DrawableCircuit->AddTransformer();
-	 
-	if (ImGui::Button("Add diode bridge"))
-		m_DrawableCircuit->AddDiodeBridge();
-
-
-	ImGui::Separator();
-
-	ImGui::Text("Connection Dots");
-	for (auto& [dot, node] : m_DrawableCircuit->m_Connections)
-	{
-		ImGui::Separator();
+		if (ImGui::Button("Add Battery"))
+			m_DrawableCircuit->AddBattery();
 		
-		//ImGui::Text("NodeIdx: %d\nNode voltage: %.2f V\nDot pos: %.2f, %.2f", node->GetIndex(), node->GetVoltage(), dot->GetPosition().x, dot->GetPosition().y);
-		bool opened = ImGui::TreeNode(vfmt("Node: {}##{}", node->GetIndex(), u64(dot.get())));
-		if (ImGui::IsItemHovered())
-			dot->IsHoveredInUi = true;
-		else
-			dot->IsHoveredInUi = false;
+		if (ImGui::Button("Add Resistor"))
+			m_DrawableCircuit->AddResistor();
 
-		ImGui::SameLine(200.0f);
-		ImGui::Text("V: %.3f", node->GetVoltage());
+		if (ImGui::Button("Add Capacitor"))
+			m_DrawableCircuit->AddCapacitor();
 
+		if (ImGui::Button("Add Inductor"))
+			m_DrawableCircuit->AddInductor();
 
-		if (opened)
+		if (ImGui::Button("Add Diode"))
+			m_DrawableCircuit->AddDiode();
+
+		if (ImGui::Button("Add contacts group"))
+			m_DrawableCircuit->AddButton();
+
+		if (ImGui::Button("Add Neutral Coil"))
+			m_DrawableCircuit->AddNeutralRelayCoil();
+
+		if (ImGui::Button("Add neutral coil with 3rd relyability class"))
+			m_DrawableCircuit->AddNeutralRelayCoil3Class();
+
+		if (ImGui::Button("Add neitral coil with delay"))
+			m_DrawableCircuit->AddNeutralRelayCoilWithDelay();
+
+		if (ImGui::Button("Add neutral coil with delay and 3rd relyability class"))
+			m_DrawableCircuit->AddNeutralRelayCoilWithDelay3Class();
+
+		if (ImGui::Button("Add neutral coil with rectifier"))
+			m_DrawableCircuit->AddNeutralRelayCoilWithDiode();
+
+		if (ImGui::Button("Add Transformer"))
+			m_DrawableCircuit->AddTransformer();
+	 
+		if (ImGui::Button("Add diode bridge"))
+			m_DrawableCircuit->AddDiodeBridge();
+
+		if (ImGui::Button("Add transformer with middle pin"))
+			m_DrawableCircuit->AddTransformerWithMiddlePin();
+
+		if (ImGui::Button("Add KPTSH"))
+			m_DrawableCircuit->AddKPTSH();
+
+		if (ImGui::Button("Add ZBF"))
+			m_DrawableCircuit->AddZBF();
+
+		ImGui::Separator();
+
+		ImGui::Text("Connection Dots");
+		for (auto& [dot, node] : m_DrawableCircuit->m_Connections)
 		{
-			ImGui::Indent();
-			
-			ImGui::Text("Dot pos: %.2f, %.2f", dot->GetPosition().x, dot->GetPosition().y);
+			ImGui::Separator();
+		
+			//ImGui::Text("NodeIdx: %d\nNode voltage: %.2f V\nDot pos: %.2f, %.2f", node->GetIndex(), node->GetVoltage(), dot->GetPosition().x, dot->GetPosition().y);
+			bool opened = ImGui::TreeNode(vfmt("Node: {}##{}", node->GetIndex(), u64(dot.get())));
+			dot->IsHoveredInUi = ImGui::IsItemHovered();
 
-			if (ImGui::Button(vfmt("Set as ground##{}", u64(dot.get()))))
-				m_DrawableCircuit->GetCircuit()->SetGroundNode(node);
+			ImGui::SameLine(200.0f);
+			ImGui::Text("V: %.3f", node->GetVoltage());
 
-			ImGui::Text("Connected elements: %d", dot->GetNumConnectedElements());
 
-			ImGui::Indent();
-			for (auto& [elem, pinIndex] : dot->GetConnectedElements())
+			if (opened)
 			{
-				if (auto e = elem.lock())
+				ImGui::Indent();	
+				ImGui::Text("Dot pos: %.2f, %.2f", dot->GetPosition().x, dot->GetPosition().y);
+
+				if (ImGui::Button(vfmt("Set as ground##{}", u64(dot.get()))))
+					m_DrawableCircuit->GetCircuit()->SetGroundNode(node);
+
+				ImGui::Text("Connected elements: %d", dot->GetNumConnectedElements());
+
+
 				{
-					bool isWire = e->IsWire();
+					ImGui::Indent();
+					for (auto& [elem, pinIndex] : dot->GetConnectedElements())
+					{
+						if (auto e = elem.lock())
+						{
+							bool isWire = e->IsWire();
 
-					eElement* electricElem = m_DrawableCircuit->GetAssociatedElectricElement(e.get());
-					ImGui::Text("Element: %s", isWire ? "Wire" : electricElem->GetTypeName());
-					ImGui::Text("Pin index: %d", pinIndex);
+							ImGui::Text("Element: %s", isWire ? "Wire" : e->GetTypeName());
+							ImGui::Text("Pin index: %d", pinIndex);
+						}
+					}
+					ImGui::Unindent();
 				}
+
+				ImGui::Unindent();
+				ImGui::TreePop();
 			}
-			ImGui::Unindent();
-			ImGui::Unindent();
-			
-			ImGui::TreePop();
 		}
+
+
+		float PositiveVoltColor[4] = { Wire::PositiveVoltColor.r / 255.0f, Wire::PositiveVoltColor.g / 255.0f, Wire::PositiveVoltColor.b / 255.0f, Wire::PositiveVoltColor.a / 255.0f };
+		float NegativeVoltColor[4] = { Wire::NegativeVoltColor.r / 255.0f, Wire::NegativeVoltColor.g / 255.0f, Wire::NegativeVoltColor.b / 255.0f, Wire::NegativeVoltColor.a / 255.0f };
+		float CurrentDotsColor[4] = { Wire::CurrentDotsColor.r / 255.0f, Wire::CurrentDotsColor.g / 255.0f, Wire::CurrentDotsColor.b / 255.0f, Wire::CurrentDotsColor.a / 255.0f };
+
+		if (ImGui::ColorEdit4("Positive volt color", PositiveVoltColor))
+		{
+			Wire::PositiveVoltColor = sf::Color(PositiveVoltColor[0] * 255, PositiveVoltColor[1] * 255, PositiveVoltColor[2] * 255, PositiveVoltColor[3] * 255);
+			m_DrawableCircuit->UpdateWireColors();
+		}
+
+		if (ImGui::ColorEdit4("Negative volt color", NegativeVoltColor))
+		{
+			Wire::NegativeVoltColor = sf::Color(NegativeVoltColor[0] * 255, NegativeVoltColor[1] * 255, NegativeVoltColor[2] * 255, NegativeVoltColor[3] * 255);
+			m_DrawableCircuit->UpdateWireColors();
+		}
+
+		if (ImGui::ColorEdit4("Current dots color", CurrentDotsColor))
+		{
+			Wire::CurrentDotsColor = sf::Color(CurrentDotsColor[0] * 255, CurrentDotsColor[1] * 255, CurrentDotsColor[2] * 255, CurrentDotsColor[3] * 255);
+			m_DrawableCircuit->UpdateWireColors();
+		}
+		ImGui::SliderFloat("Current speed", &Wire::CurrentSpeedScalar, 0.0f, 100.0f, "%.2f", ImGuiSliderFlags_AlwaysClamp);
+
+		ImGui::Separator();
+
+		//if (ImGui::Button("Solve"))
+		//{
+		//	m_DrawableCircuit->SyncWithCircuit();
+		//	m_DrawableCircuit->m_Circuit->GetMatrix().Clear();
+		//	m_DrawableCircuit->m_Circuit->StampElements(0.001);
+		//	m_DrawableCircuit->m_Circuit->Solve();
+		//	m_DrawableCircuit->m_Circuit->UpdateElements(0.000005);
+		//	m_DrawableCircuit->UpdateWireColors();
+		//}
+
+		//std::stringstream ss;
+		//m_DrawableCircuit->m_Circuit->GetMatrix().Print(ss);
+		//ImGui::Text(ss.str().c_str());
+		for (auto& node : m_DrawableCircuit->m_Circuit->GetNodes())
+		{
+			ImGui::Text(vfmt("Node: {} V: {}", node->GetIndex(), node->GetVoltage()));
+		}
+
+		if (!m_EditableWire && ImGui::IsMouseClicked(ImGuiMouseButton_Middle))
+		{
+			if (std::optional info = SearchForNearestWire(mousePos, mousePos, nullptr))
+			{
+				auto [wire, segIdx] = *info;
+				m_EditableWire = wire->As<Wire>();
+				m_WireEditOnStart = true;
+				m_EditableWire->DisconnectFromConnectionAt<Wire::Start>();
+				m_EditableWire->DisconnectFromConnectionAt<Wire::End>();
+			}
+		}
+
+		if (m_EditableWire || ImGui::GetIO().WantCaptureMouse)
+			m_DraggableElement = nullptr; // Make sure elements are not draggable while we are editing wire or mouse is not captured by imgui
+
+		HandleDraggableElem(mousePos, DragOffset);
+		HandleWireEditing();
 	}
-
-
-	float PositiveVoltColor[4] = { Wire::PositiveVoltColor.r / 255.0f, Wire::PositiveVoltColor.g / 255.0f, Wire::PositiveVoltColor.b / 255.0f, Wire::PositiveVoltColor.a / 255.0f };
-	float NegativeVoltColor[4] = { Wire::NegativeVoltColor.r / 255.0f, Wire::NegativeVoltColor.g / 255.0f, Wire::NegativeVoltColor.b / 255.0f, Wire::NegativeVoltColor.a / 255.0f };
-	float CurrentDotsColor[4] = { Wire::CurrentDotsColor.r / 255.0f, Wire::CurrentDotsColor.g / 255.0f, Wire::CurrentDotsColor.b / 255.0f, Wire::CurrentDotsColor.a / 255.0f };
-
-	if (ImGui::ColorEdit4("Positive volt color", PositiveVoltColor))
-	{
-		Wire::PositiveVoltColor = sf::Color(PositiveVoltColor[0] * 255, PositiveVoltColor[1] * 255, PositiveVoltColor[2] * 255, PositiveVoltColor[3] * 255);
-		m_DrawableCircuit->UpdateWireColors();
-	}
-
-	if (ImGui::ColorEdit4("Negative volt color", NegativeVoltColor))
-	{
-		Wire::NegativeVoltColor = sf::Color(NegativeVoltColor[0] * 255, NegativeVoltColor[1] * 255, NegativeVoltColor[2] * 255, NegativeVoltColor[3] * 255);
-		m_DrawableCircuit->UpdateWireColors();
-	}
-
-	if (ImGui::ColorEdit4("Current dots color", CurrentDotsColor))
-	{
-		Wire::CurrentDotsColor = sf::Color(CurrentDotsColor[0] * 255, CurrentDotsColor[1] * 255, CurrentDotsColor[2] * 255, CurrentDotsColor[3] * 255);
-		m_DrawableCircuit->UpdateWireColors();
-	}
-	ImGui::SliderFloat("Current speed", &Wire::CurrentSpeedScalar, 0.0f, 100.0f, "%.2f", ImGuiSliderFlags_AlwaysClamp);
-
-	ImGui::Separator();
-
-	//if (ImGui::Button("Solve"))
-	//{
-	//	m_DrawableCircuit->SyncWithCircuit();
-	//	m_DrawableCircuit->m_Circuit->GetMatrix().Clear();
-	//	m_DrawableCircuit->m_Circuit->StampElements(0.001);
-	//	m_DrawableCircuit->m_Circuit->Solve();
-	//	m_DrawableCircuit->m_Circuit->UpdateElements(0.000005);
-	//	m_DrawableCircuit->UpdateWireColors();
-	//}
-
-	std::stringstream ss;
-	m_DrawableCircuit->m_Circuit->GetMatrix().Print(ss);
-	ImGui::Text(ss.str().c_str());
-
-
-	if (m_EditableWire || ImGui::GetIO().WantCaptureMouse)
-		m_DraggableElement = nullptr; // Make sure elements are not draggable while we are editing wire or mouse is not captured by imgui
-
-	HandleDraggableElem(mousePos, DragOffset);
-	HandleWireEditing();
 
 	ImGui::End();
 }
@@ -1204,6 +1409,19 @@ void CircuitEditor::HandleWireEditing()
 			segments->pop_back();
 	}
 
+	if (ImGui::IsKeyPressed(ImGuiKey::ImGuiKey_H, false))
+	{
+		if (segments->size() != 0)
+			segments->pop_back();
+
+		m_EditableWire->Hide() = !m_EditableWire->Hide();
+
+		UpdateAllWireConnections();
+		m_DrawableCircuit->SyncWithCircuit();
+
+		m_EditableWire = nullptr;
+	}
+
 
 	if (ImGui::IsKeyPressed(ImGuiKey::ImGuiKey_Enter, false) || ImGui::IsKeyPressed(ImGuiKey::ImGuiKey_Escape, false))
 	{
@@ -1215,21 +1433,29 @@ void CircuitEditor::HandleWireEditing()
 
 		m_EditableWire = nullptr;
 	}
+
+
+	if (ImGui::IsKeyPressed(ImGuiKey::ImGuiKey_Delete, false))
+	{
+		m_DrawableCircuit->RemoveElement(m_EditableWire);
+		m_DrawableCircuit->SyncWithCircuit();
+		m_EditableWire = nullptr;
+	}
 }
 
 
 void CircuitEditor::UpdateAllWireConnections()
 {
-	for (size_t i = 0; i < m_DrawableCircuit->m_DrawableElements.size(); i++)
+	for (size_t i = 0; i < m_DrawableCircuit->GetDrawableElements().size(); i++)
 	{
-		auto& elem = m_DrawableCircuit->m_DrawableElements[i];
+		auto& elem = m_DrawableCircuit->GetDrawableElements()[i];
 		if (elem->IsWire())
 		{
 			Wire* w = elem->As<Wire>();
 			if (w->GetSegments().size() == 0)
 			{
-				w->DisconnectFromDotAt<Wire::Start>();
-				w->DisconnectFromDotAt<Wire::End>();
+				w->DisconnectFromConnectionAt<Wire::Start>();
+				w->DisconnectFromConnectionAt<Wire::End>();
 			}
 			else
 			{
@@ -1248,21 +1474,18 @@ void CircuitEditor::UpdateAllWireConnections()
 template<Wire::PinPoint StartOrEnd>
 void CircuitEditor::UpdateConnectionData(u64 WireIndex, sf::Vector2f& point)
 {
-	auto& elem = m_DrawableCircuit->m_DrawableElements[WireIndex];
+	auto& elem = m_DrawableCircuit->GetDrawableElements()[WireIndex];
 	Wire* wire = elem->As<Wire>();
+	wire->DisconnectFromConnectionAt<StartOrEnd>();
 
 	if (std::optional dotOpt = GetClosestConnectionDot(point)) // Position is close to some connection dot
 	{
-		wire->DisconnectFromDotAt<StartOrEnd>();
-
 		auto& dot = *dotOpt;
 		point = dot->GetPosition();
 		wire->ConnectToDotAt<StartOrEnd>(dot);
 	}
 	else if (std::optional pinInfo = GetClosestElementPinInfo(point)) // Position is close to some pin
 	{
-		wire->DisconnectFromDotAt<StartOrEnd>();
-
 		auto& [pos, pinIndex, otherElem] = *pinInfo;
 		point = pos;
 		auto newDot = m_DrawableCircuit->CreateConnectionDot(point);
@@ -1272,7 +1495,6 @@ void CircuitEditor::UpdateConnectionData(u64 WireIndex, sf::Vector2f& point)
 	}
 	else if (std::optional otherWireData = SearchForNearestWire(point, point, elem)) // we're close to another wire
 	{
-		wire->DisconnectFromDotAt<StartOrEnd>();
 		auto& [otherWireBase, segmentIndex] = *otherWireData;
 		Wire* otherWire = otherWireBase->As<Wire>();
 		auto& otherSegments = otherWire->GetSegments();
@@ -1293,10 +1515,6 @@ void CircuitEditor::UpdateConnectionData(u64 WireIndex, sf::Vector2f& point)
 		{
 			wire->ConnectToDotAt<StartOrEnd>(middleDot);
 		}
-	}
-	else
-	{
-		wire->DisconnectFromDotAt<StartOrEnd>();
 	}
 }
 

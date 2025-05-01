@@ -53,11 +53,13 @@ int eDrawableBase::GetPinIndexFromLocalPosition(sf::Vector2f pos)
 
 //----------------------------------------------------------------------------------------------------------------------------------------
 //											Resistor
+//
+//----------------------------------------------------------------------------------------------------------------------------------------
 
 
 
 Resistor::Resistor()
-	: eDrawableBase("assets\\resistor.png")
+	: eDrawableBase("assets\\resistor2.png")
 {
 	GetTexture().setSmooth(true);
 	m_PinPositions =
@@ -71,7 +73,9 @@ Resistor::Resistor()
 void Resistor::UIParams(eElement* elem)
 {
 	eResistor* resistor = static_cast<eResistor*>(elem);
-	ImGui::DragScalar(vfmt("Resistance##{}", u64(this)), ImGuiDataType_Double, &resistor->m_Resistance, 0.1f, nullptr, nullptr, "%.2f Ohm");
+	double min = 1e-6;
+	double max = 1e6;
+	ImGui::DragScalar(vfmt("Resistance##{}", u64(this)), ImGuiDataType_Double, &resistor->m_Resistance, 0.01f, &min, &max, "%.6f Ohm");
 	ImGui::Text("Current: %.5f A", resistor->GetCurrent());
 }
 
@@ -94,6 +98,8 @@ void			Resistor::Draw() { dlDrawList::getWindow()->draw(m_sprite); }
 
 //----------------------------------------------------------------------------------------------------------------------------------------
 //											Battery
+//
+//----------------------------------------------------------------------------------------------------------------------------------------
 
 
 Battery::Battery()
@@ -146,6 +152,8 @@ void			Battery::Draw() { dlDrawList::getWindow()->draw(m_sprite); }
 
 //----------------------------------------------------------------------------------------------------------------------------------------
 //											Capacitor
+//
+//----------------------------------------------------------------------------------------------------------------------------------------
 
 
 Capacitor::Capacitor()
@@ -169,15 +177,16 @@ void Capacitor::Draw()
 void Capacitor::UIParams(eElement* elem)
 {
 	eCapacitor* capacitor = static_cast<eCapacitor*>(elem);
-	ImGui::DragScalar("Capacitance", ImGuiDataType_Double, &capacitor->m_Capacitance, 0.00001f, nullptr, nullptr, "%.6f F");
+	double min = 1e-6;
+	double max = 1e6;
+	ImGui::DragScalar("Capacitance", ImGuiDataType_Double, &capacitor->m_Capacitance, 0.00001f, &min, &max, "%.6f F");
 }
 
 
 std::string Capacitor::Parser_WriteElementData(eElement* elem)
 {
 	eCapacitor* capacitor = static_cast<eCapacitor*>(elem);
-	std::string data = std::to_string(capacitor->m_Capacitance);
-	return data;
+	return std::to_string(capacitor->m_Capacitance);
 }
 
 
@@ -190,6 +199,8 @@ void Capacitor::Parser_ReadElementData(eElement* elem, const std::string& data)
 
 //----------------------------------------------------------------------------------------------------------------------------------------
 //											Inductor
+//
+//----------------------------------------------------------------------------------------------------------------------------------------
 
 
 Inductor::Inductor()
@@ -211,7 +222,9 @@ void Inductor::Draw()
 void Inductor::UIParams(eElement* elem)
 {
 	eInductor* inductor = static_cast<eInductor*>(elem);
-	ImGui::DragScalar("Inductance", ImGuiDataType_Double, &inductor->m_Inductance, 0.00001f, nullptr, nullptr, "%.6f H");
+	double min = 1e-6;
+	double max = 1e6;
+	ImGui::DragScalar("Inductance", ImGuiDataType_Double, &inductor->m_Inductance, 0.0001f, &min, &max, "%.6f H");
 }
 
 std::string Inductor::Parser_WriteElementData(eElement* elem)
@@ -228,6 +241,9 @@ void Inductor::Parser_ReadElementData(eElement* elem, const std::string& data)
 
 //----------------------------------------------------------------------------------------------------------------------------------------
 //											Diode
+//
+//----------------------------------------------------------------------------------------------------------------------------------------
+
 
 
 Diode::Diode()
@@ -265,35 +281,66 @@ void Diode::Parser_ReadElementData(eElement* elem, const std::string& data)
 
 //----------------------------------------------------------------------------------------------------------------------------------------
 //											RelayContactsGroup
+//
+//----------------------------------------------------------------------------------------------------------------------------------------
 
-
+#if 0 
 RelayContactsGroup::RelayContactsGroup()
 	: eDrawableBase("assets\\switch.png")
 	, m_BaseSprite(m_texture)
-	, m_ButtonSprite(m_texture)
+	, m_SwitchSprite(m_texture)
 {
 	m_texture.setSmooth(true);
+
+	float texSize_X = float(m_sprite.getTextureRect().size.x);
+	float texSize_Y = float(m_sprite.getTextureRect().size.y);
 
 	m_PinPositions =
 	{
 		{ 0.0f, 12.0f },
-		{ float(m_sprite.getTextureRect().size.x), 12.0f },
-		{ 68.0f, 130.0f },
+		{ texSize_X, 12.0f },
+		{ 100.0f, 130.0f },
 	};
-	m_BaseSprite.setTextureRect(sf::IntRect({ 0, 0 }, { 300, 60 }));
-	m_ButtonSprite.setTextureRect(sf::IntRect({ 0, 70 }, { 219, 48 }));
+	m_BaseSprite.setTextureRect(sf::IntRect({ 0, 0 }, { int(texSize_X), 60 }));
+	m_SwitchSprite.setTextureRect(sf::IntRect({ 0, 70 }, { int(texSize_X), 20 }));
 
-	m_ButtonSprite.setOrigin({ 195.0f, 24.0f });
-	m_SwitchPos = { 235, 56 };
-	m_ButtonSprite.setPosition(m_SwitchPos);
-	m_ButtonSprite.setRotation(sf::degrees(-25.0f));
+	m_SwitchSprite.setOrigin({ texSize_X - 12.0f, 10.0f });
+	m_SwitchPos = { 250, 56 };
+	m_SwitchSprite.setPosition(m_SwitchPos);
+	m_SwitchSprite.setRotation(sf::degrees(-25.0f));
+}
+#else
+RelayContactsGroup::RelayContactsGroup()
+	: eDrawableBase("assets\\switch2.png")
+	, m_BaseSprite(m_texture)
+	, m_SwitchSprite(m_texture)
+{
+	m_texture.setSmooth(true);
+
+	float texSize_X = float(m_sprite.getTextureRect().size.x);
+	float texSize_Y = float(m_sprite.getTextureRect().size.y);
+
+	m_PinPositions =
+	{
+		{ 12.0f, 12.0f },
+		{ 212.0f, 12.0f },
+		{ 12.0f, 155.0f },
+	};
+	m_BaseSprite.setTextureRect(sf::IntRect({ 0, 0 }, { 224, 60 }));
+	m_SwitchSprite.setTextureRect(sf::IntRect({ 0, 70 }, { int(texSize_X), 20 }));
+
+	m_SwitchSprite.setOrigin({ texSize_X - 12.0f, 10.0f });
+	m_SwitchPos = { 212, 56 };
+	m_SwitchSprite.setPosition(m_SwitchPos);
+	m_SwitchSprite.setRotation(sf::degrees(-25.0f));
 }
 
+#endif
 
 void RelayContactsGroup::SetPosition(sf::Vector2f pos)
 {
 	m_BaseSprite.setPosition(pos);
-	m_ButtonSprite.setPosition(pos + m_SwitchPos);
+	m_SwitchSprite.setPosition(pos + m_SwitchPos);
 }
 
 
@@ -306,34 +353,49 @@ void RelayContactsGroup::Update(DrawableCircuit& circ, eElement* elem)
 {
 	eRelayContactsGroup* eGroup = static_cast<eRelayContactsGroup*>(elem);
 
-	if (m_Coil.expired())
+	if (m_Coil.expired()) // m_Coil is null
 	{
 		m_Coil.reset();
-		if (!LookupCoil(eGroup, circ))
+		if (!LookupCoil(eGroup, circ)) // couldn't find any coil
+		{
+			eGroup->SetState(m_NormalState); // set to default state
+			SetStateToDraw(m_NormalState);
 			return;
+		}
 	}
 
 	eCoil* pCoil = static_cast<eCoil*>(circ.GetAssociatedElectricElement(m_Coil.lock().get()));
-	if (pCoil->GetHashName() != eGroup->GetCoilHashName())
+	if (pCoil->GetHashName() != eGroup->GetCoilHashName())   // Coil isn't null but its name is different from the one in eGroup
 	{
 		m_Coil.reset();
 		if (!LookupCoil(eGroup, circ))
 		{
-			m_stateToDraw = eRelayContactsGroup::State::n11_n12;
-			eGroup->SetState(eRelayContactsGroup::State::n11_n12);
+			eGroup->SetState(m_NormalState);
+			SetStateToDraw(m_NormalState);
 			return;
 		}
 	}
 
 	if (pCoil->IsActive())
 	{
-		eGroup->SetState(eRelayContactsGroup::State::n11_n13);
-		m_stateToDraw = eRelayContactsGroup::State::n11_n13;
+		switch (m_NormalState)
+		{
+		case eRelayContactsGroup::n11_n12:
+			SetStateToDraw(eRelayContactsGroup::State::n11_n13);
+			eGroup->SetState(eRelayContactsGroup::State::n11_n13);
+			break;
+		case eRelayContactsGroup::n11_n13:
+			SetStateToDraw(eRelayContactsGroup::State::n11_n12);
+			eGroup->SetState(eRelayContactsGroup::State::n11_n12);
+			break;
+		default:
+			break;
+		}
 	}
 	else
 	{
-		eGroup->SetState(eRelayContactsGroup::State::n11_n12);
-		m_stateToDraw = eRelayContactsGroup::State::n11_n12;
+		eGroup->SetState(m_NormalState);
+		SetStateToDraw(m_NormalState);
 	}
 }
 
@@ -372,8 +434,8 @@ void RelayContactsGroup::Flip(flipAxis axis)
 		axis == flipAxis::X ? -baseScale.x : baseScale.x,
 		axis == flipAxis::Y ? -baseScale.y : baseScale.y });
 
-	sf::Vector2f buttonScale = m_ButtonSprite.getScale();
-	m_ButtonSprite.setScale({
+	sf::Vector2f buttonScale = m_SwitchSprite.getScale();
+	m_SwitchSprite.setScale({
 		axis == flipAxis::X ? -buttonScale.x : buttonScale.x,
 		axis == flipAxis::Y ? -buttonScale.y : buttonScale.y });
 
@@ -399,10 +461,10 @@ bool RelayContactsGroup::LookupCoil(eRelayContactsGroup* my_eContacts, DrawableC
 {
 	auto& drawableElements = circ.GetDrawableElements();
 
-	auto it = std::ranges::find_if(drawableElements,
-		[&](const std::shared_ptr<eDrawableBase>& otherDrawable)
+	auto it = std::ranges::find_if(drawableElements,					// eGroup name should match the coil name
+		[&](const std::shared_ptr<eDrawableBase>& otherDrawable) 
 		{
-			if (otherDrawable->GetType() == DrawableType::DRAWABLE_RELAY_COIL)
+			if (otherDrawable->IsCoil())
 			{
 				eCoil* someCoil = static_cast<eCoil*>(circ.GetAssociatedElectricElement(otherDrawable.get()));
 				return my_eContacts->GetCoilHashName() == someCoil->GetHashName();
@@ -423,17 +485,20 @@ void RelayContactsGroup::Draw()
 	switch (m_stateToDraw)
 	{
 	case eRelayContactsGroup::n11_n12:
-		m_ButtonSprite.setRotation(m_Rotation + sf::degrees(0.0f));
+		m_SwitchSprite.setRotation(m_Rotation + sf::degrees(0.0f));
 		break;
 	case eRelayContactsGroup::n11_n13:
-		m_ButtonSprite.setRotation(m_Rotation + sf::degrees(-25.0f));
+		{
+			float sign = m_IsFlipped_Y ? -1.0f : 1.0f;
+			m_SwitchSprite.setRotation(m_Rotation + sign * sf::degrees(m_IsFlipped_X ? 25.0f : -25.0f));
+		}
 		break;
 	default:
 		break;
 	}
 
 	dlDrawList::getWindow()->draw(m_BaseSprite);
-	dlDrawList::getWindow()->draw(m_ButtonSprite);
+	dlDrawList::getWindow()->draw(m_SwitchSprite);
 
 	for (auto& pos : m_PinPositions)
 	{
@@ -451,17 +516,34 @@ void RelayContactsGroup::UIParams(eElement* elem)
 	{
 		contact->SetCoilName(m_UiBuff);
 	}
+	if (ImGui::Combo("Normal state", (int*)&m_NormalState, "n11_n12\0n11_n13\0"))
+	{
+
+	}
 }
 
 
-std::string RelayContactsGroup::Parser_WriteElementData(eElement* elem) { return ""; }
-void RelayContactsGroup::Parser_ReadElementData(eElement* elem, const std::string& data) {}
+std::string RelayContactsGroup::Parser_WriteElementData(eElement* elem) 
+{ 
+	eRelayContactsGroup* c = static_cast<decltype(c)>(elem);
+	auto& name = c->GetCoilName();
+	return std::format("{} {} {}", name.empty() ? "-" : name, c->GetCoilHashName(), u64(m_NormalState));
+}
 
+void RelayContactsGroup::Parser_ReadElementData(eElement* elem, const std::string& data)
+{
+	eRelayContactsGroup* c = static_cast<decltype(c)>(elem);
+	std::istringstream iss(data);
+	iss >> c->m_CoilName >> c->m_HashName >> *(int*)(&m_NormalState);
+	std::copy(c->m_CoilName.begin(), c->m_CoilName.end(), std::begin(m_UiBuff));
+}
 bool RelayContactsGroup::IsHovered() { return WidgetBase::IsHovered(m_BaseSprite); }
 
 
 //----------------------------------------------------------------------------------------------------------------------------------------
 //											Coil
+//
+//----------------------------------------------------------------------------------------------------------------------------------------
 
 
 Coil::Coil(const std::string& path)
@@ -478,13 +560,13 @@ void Coil::UIParams(eElement* elem)
 	eCoil* coil = static_cast<eCoil*>(elem);
 	if (ImGui::InputText("Coil name", m_UiBuff, std::size(m_UiBuff)))
 		coil->SetName(m_UiBuff);
+	double min = 0.00001;
+	double max = 100.0;
 
-	ImGui::DragScalar("Inductance", ImGuiDataType_Double, &coil->m_Inductance, 0.00001f, nullptr, nullptr, "%.6f H");
-
-	double min = 0.0;
-	double max = 10.0;
-	ImGui::DragScalar("Release delay", ImGuiDataType_Double, &coil->m_ReleaseDelay, 0.01f, &min, &max, "%.5f s");
-	ImGui::DragScalar("Current threshold", ImGuiDataType_Double, &coil->m_CurrThreshold, 0.001f, &min, &max, "%.5f A");
+	ImGui::DragScalar("Inductance", ImGuiDataType_Double, &coil->m_l.m_Inductance, 0.00001f, &min, &max, "%.6f H");
+	ImGui::DragScalar(vfmt("Resistance##{}", u64(this)), ImGuiDataType_Double, &coil->m_l.m_R, 0.01f, &min, &max, "%.5f Ohm");
+	ImGui::DragScalar(vfmt("Release delay##{}", u64(this)), ImGuiDataType_Double, &coil->m_ReleaseDelay, 0.01f, &min, &max, "%.5f s");
+	ImGui::DragScalar(vfmt("Current threshold##{}", u64(this)), ImGuiDataType_Double, &coil->m_CurrThreshold, 0.001f, &min, &max, "%.5f A");
 	ImGui::Text("Is active: %s", coil->IsActive() ? "true" : "false");
 	ImGui::Text("Inactive timer: %.5f", coil->m_InactiveCoilTimer);
 }
@@ -492,22 +574,37 @@ void Coil::UIParams(eElement* elem)
 std::string Coil::Parser_WriteElementData(eElement* elem)
 {
 	eCoil* coil = static_cast<eCoil*>(elem);
-	return std::format("{} {:.6f} {:.6f}",
+	return std::format("{} {} {:.6f} {:.6f} {:.6f} {:.6f}",
+		coil->m_Name.empty() ? "-" : coil->m_Name,
 		coil->m_HashName,
 		coil->m_ReleaseDelay,
-		coil->m_CurrThreshold);
+		coil->m_CurrThreshold,
+		coil->m_l.m_R, 
+		coil->m_l.m_Inductance );
 }
 
 void Coil::Parser_ReadElementData(eElement* elem, const std::string& data)
 {
 	eCoil* coil = static_cast<eCoil*>(elem);
-	if (auto result = scn::scan<u64, double, double>(data, "{} {} {}"))
-	{
-		auto [hashName, releaseDelay, currThreshold] = result->values();
-		coil->m_HashName = hashName;
-		coil->m_ReleaseDelay = releaseDelay;
-		coil->m_CurrThreshold = currThreshold;
-	}
+	//if (auto result = scn::scan<std::string, u64, double, double, double>(data, "{} {} {} {} {}"))
+	//{
+	//	auto [name, hashName, releaseDelay, currThreshold, induct] = result->values();
+	//	coil->m_Name = name;
+	//	coil->m_HashName = hashName;
+	//	coil->m_ReleaseDelay = releaseDelay;
+	//	coil->m_CurrThreshold = currThreshold;
+	//	coil->m_l.SetInductance(induct);
+	//}
+
+	std::istringstream iss(data);
+	iss >> coil->m_Name 					 		// coil->m_Name.empty() ? "-" : coil->m_Name,
+		>> coil->m_HashName 				 		// coil->m_HashName,
+		>> coil->m_ReleaseDelay 			 		// coil->m_ReleaseDelay,
+		>> coil->m_CurrThreshold			 		// coil->m_CurrThreshold,
+		>> coil->m_l.m_R 					 		// coil->m_l.m_R,
+		>> coil->m_l.m_Inductance;			 		// coil->m_l.m_Inductance );
+
+	std::copy(coil->m_Name.begin(), coil->m_Name.end(), std::begin(m_UiBuff));
 }
 
 void Coil::Update(DrawableCircuit& circ, eElement* elem)
@@ -520,6 +617,8 @@ void Coil::Update(DrawableCircuit& circ, eElement* elem)
 
 //----------------------------------------------------------------------------------------------------------------------------------------
 //											NeutralRelayCoil
+//
+//----------------------------------------------------------------------------------------------------------------------------------------
 
 
 NeutralRelayCoil::NeutralRelayCoil()
@@ -548,6 +647,8 @@ NeutralRelayCoil3RelyabilityClass::NeutralRelayCoil3RelyabilityClass()
 
 //----------------------------------------------------------------------------------------------------------------------------------------
 //											NeutralRelayCoil with Switch Off Delay
+//
+//----------------------------------------------------------------------------------------------------------------------------------------
 
 
 NeutralRelayCoilWithSwitchOffDelay::NeutralRelayCoilWithSwitchOffDelay()
@@ -574,6 +675,8 @@ NeutralRelayCoilWithSwitchOffDelay3RelyabilityClass::NeutralRelayCoilWithSwitchO
 
 //----------------------------------------------------------------------------------------------------------------------------------------
 //											NeutralRelayCoil with rectifier
+//
+//----------------------------------------------------------------------------------------------------------------------------------------
 
 
 NeutralRelayCoilWithRectifier::NeutralRelayCoilWithRectifier()
@@ -589,32 +692,74 @@ NeutralRelayCoilWithRectifier::NeutralRelayCoilWithRectifier()
 
 void NeutralRelayCoilWithRectifier::UIParams(eElement* elem)
 {
-	eCoilWithRectifier* wrapper = static_cast<eCoilWithRectifier*>(elem);
-	double r = wrapper->r.GetResistance();
+	eCoilWithRectifier* coil = static_cast<eCoilWithRectifier*>(elem);
+	Coil::UIParams(elem);
+
 	double min = 1e-6;
 	double max = 1e6;
-	ImGui::DragScalar(vfmt("R##{}", u64(this)), ImGuiDataType_Double, &r, 0.01f, &min, &max, "%.4f Ohm");
-	wrapper->r.SetResistance(r);
+	ImGui::DragScalar(vfmt("R##{}", u64(this)), ImGuiDataType_Double, &coil->m_r.m_Resistance, 0.01f, &min, &max, "%.4f");
+	//auto diodeParams = [&](eDiode& d)
+	//	{
+	//		ImGui::Separator();
+	//		bool edited = false;
+	//		edited = ImGui::DragScalar(vfmt("Thermal voltage##{}", u64(&d)), ImGuiDataType_Double, &d.m_Vt, 0.00001f, &min, &max, "%.6f");
+	//		edited = ImGui::DragScalar(vfmt("Saturation current##{}", u64(&d)), ImGuiDataType_Double, &d.m_Is, 0.00001f, &min, &max, "%.6f");
+	//		edited = ImGui::DragScalar(vfmt("Zener breakdown voltage##{}", u64(&d)), ImGuiDataType_Double, &d.m_ZVoltage, 0.00001f, &min, &max, "%.6f");
+	//		edited = ImGui::DragScalar(vfmt("Offset for Zener breakdown exponential##{}", u64(&d)), ImGuiDataType_Double, &d.m_ZOffset, 0.00001f, &min, &max, "%.6f");
+	//		edited = ImGui::DragScalar(vfmt("Critical voltage for limiting exponential growth##{}", u64(&d)), ImGuiDataType_Double, &d.m_Vcrit, 0.00001f, &min, &max, "%.6f");
+	//		edited = ImGui::DragScalar(vfmt("Critical voltage for Zener breakdown limiting##{}", u64(&d)), ImGuiDataType_Double, &d.m_Vzcrit, 0.00001f, &min, &max, "%.6f");
+	//		edited = ImGui::DragScalar(vfmt("scale voltage##{}", u64(&d)), ImGuiDataType_Double, &d.m_Vscale, 0.00001f, &min, &max, "%.6f");
+	//		edited = ImGui::DragScalar(vfmt("1 / Vscale##{}", u64(&d)), ImGuiDataType_Double, &d.m_Vdcoef, 0.00001f, &min, &max, "%.6f");
+	//		edited = ImGui::DragScalar(vfmt("1 / Vt for Zener breakdown##{}", u64(&d)), ImGuiDataType_Double, &d.m_Vzcoef, 0.00001f, &min, &max, "%.6f");
+	//		d.SetupCriticalVoltages();
+	//	};
 
-#if vComposeCoil
-	if (ImGui::InputText("Coil name", m_UiBuff, std::size(m_UiBuff)))
-		wrapper->l->SetName(m_UiBuff);
+	//diodeParams(coil->m_db.m_Diodes[0]);
+	//diodeParams(coil->m_db.m_Diodes[1]);
+	//diodeParams(coil->m_db.m_Diodes[2]);
+	//diodeParams(coil->m_db.m_Diodes[3]);
+}
 
-	ImGui::DragScalar(vfmt("Inductance##{}", u64(this)), ImGuiDataType_Double, &wrapper->l->m_Inductance, 0.00001f, &min, &max, "%.6f H");
-	ImGui::DragScalar(vfmt("Release delay##{}", u64(this)), ImGuiDataType_Double, &wrapper->l->m_ReleaseDelay, 0.01f, &min, &max, "%.5f s");
-	ImGui::DragScalar(vfmt("Current threshold##{}", u64(this)), ImGuiDataType_Double, &wrapper->l->m_CurrThreshold, 0.001f, &min, &max, "%.5f A");
-	ImGui::Text("Is active: %s", wrapper->l->IsActive() ? "true" : "false");
-	ImGui::Text("Inactive timer: %.5f", wrapper->l->m_InactiveCoilTimer);
-	ImGui::Text("Current: %.5f A", wrapper->l->GetCurrent());
-#else
-	//Coil::UIParams(elem);
-#endif
+std::string NeutralRelayCoilWithRectifier::Parser_WriteElementData(eElement* elem)
+{
+	eCoilWithRectifier* coil = static_cast<eCoilWithRectifier*>(elem);
+	return std::format("{} {} {:.6f} {:.6f} {:.6f} {:.6f}",
+		coil->m_Name.empty() ? "-" : coil->m_Name,
+		coil->m_HashName,
+		coil->m_ReleaseDelay,
+		coil->m_CurrThreshold,
+		coil->m_l.GetInductance(),
+		coil->m_r.GetResistance() );
+}
+
+void NeutralRelayCoilWithRectifier::Parser_ReadElementData(eElement* elem, const std::string& data)
+{
+	eCoilWithRectifier* coil = static_cast<eCoilWithRectifier*>(elem);
+	//if (auto result = scn::scan<u64, double, double, double, double>(data, "{} {} {} {} {}"))
+	//{
+	//	auto [hashName, releaseDelay, currThreshold, l, r] = result->values();
+	//	coil->m_HashName = hashName;
+	//	coil->m_ReleaseDelay = releaseDelay;
+	//	coil->m_CurrThreshold = currThreshold;
+	//	coil->m_l.SetInductance(l);
+	//	coil->m_r.SetResistance(r);
+	//}
+	std::istringstream iss(data);
+	iss >> coil->m_Name 
+		>> coil->m_HashName 
+		>> coil->m_ReleaseDelay 
+		>> coil->m_CurrThreshold 
+		>> coil->m_l.m_Inductance 
+		>> coil->m_r.m_Resistance;
+	std::copy(coil->m_Name.begin(), coil->m_Name.end(), std::begin(m_UiBuff));
 }
 
 
 
 //----------------------------------------------------------------------------------------------------------------------------------------
 //											Transformer
+//
+//----------------------------------------------------------------------------------------------------------------------------------------
 
 Transformer::Transformer()
 	: eDrawableBase("assets\\transformer1.png")
@@ -638,7 +783,17 @@ void Transformer::Draw()
 
 void Transformer::UIParams(eElement* elem)
 {
-	eTransformer* transformer = static_cast<eTransformer*>(elem);
+	eTransformer* t = static_cast<eTransformer*>(elem);
+	double r = t->GetRatio();
+	double min = 1e-6;
+	double max = 1e6;
+	ImGui::DragScalar(vfmt("L1##{}", u64(this)), ImGuiDataType_Double, &t->m_L1, 0.00001f, &min, &max, "%.6f H");
+	ImGui::DragScalar(vfmt("L2##{}", u64(this)), ImGuiDataType_Double, &t->m_L2, 0.00001f, &min, &max, "%.6f H");
+	ImGui::DragScalar(vfmt("Coupling coefficient##{}", u64(this)), ImGuiDataType_Double, &t->m_CouplCoef, 0.00001f, &min, &max, "%.6f");
+	if (ImGui::DragScalar(vfmt("Ratio##{}", u64(this)), ImGuiDataType_Double, &r, 0.001f, &min, &max, "%.6f"))
+	{
+		t->SetRatio(r);
+	}
 }
 
 
@@ -661,6 +816,13 @@ void Transformer::Parser_ReadElementData(eElement* elem, const std::string& data
 	}
 }
 
+//----------------------------------------------------------------------------------------------------------------------------------------
+//											DiodeBridge
+//
+//----------------------------------------------------------------------------------------------------------------------------------------
+
+
+
 DiodeBridge::DiodeBridge()
 	: eDrawableBase("assets\\diodeBridge.png")
 {
@@ -679,4 +841,178 @@ void DiodeBridge::Draw()
 	dlDrawList::getWindow()->draw(m_sprite);
 }
 
+TransformerWithMiddlePin::TransformerWithMiddlePin()
+	: eDrawableBase("assets\\transformer3.png")
+{
+	GetTexture().setSmooth(true);
+	m_PinPositions =
+	{
+		{ 12.0f, 0.0f }, // primary start
+		{ 12.0f, float(m_sprite.getTextureRect().size.y) }, // primary end
+		{ float(m_sprite.getTextureRect().size.x) - 12.0f, 0.0f }, // secondary start
+		{ float(m_sprite.getTextureRect().size.x) - 12.0f, float(m_sprite.getTextureRect().size.y) }, // secondary end
+		{ float(m_sprite.getTextureRect().size.x) - 12.0f, float(m_sprite.getTextureRect().size.y) / 2.0f }, // middle
+	};
+}	
 
+
+//----------------------------------------------------------------------------------------------------------------------------------------
+//											TransformerWithMiddlePin
+//
+//----------------------------------------------------------------------------------------------------------------------------------------
+
+
+void TransformerWithMiddlePin::Draw()
+{
+	dlDrawList::getWindow()->draw(m_sprite);
+}
+
+void TransformerWithMiddlePin::UIParams(eElement* elem)
+{
+	SimTy* t = static_cast<SimTy*>(elem);
+
+	double min = 1e-6;
+	double max = 1e6;
+
+	auto TransformerParams = [&](eTransformer* t)
+		{
+			double r = t->GetRatio();
+			ImGui::DragScalar(vfmt("L1##{}", u64(t)), ImGuiDataType_Double, &t->m_L1, 0.00001f, &min, &max, "%.6f H");
+			ImGui::DragScalar(vfmt("L2##{}", u64(t)), ImGuiDataType_Double, &t->m_L2, 0.00001f, &min, &max, "%.6f H");
+			ImGui::DragScalar(vfmt("Coupling coefficient##{}", u64(t)), ImGuiDataType_Double, &t->m_CouplCoef, 0.00001f, &min, &max, "%.6f");
+			ImGui::DragScalar(vfmt("R1##{}", u64(t)), ImGuiDataType_Double, &t->m_R1, 0.001f, &min, &max, "%.6f Ohm");
+			ImGui::DragScalar(vfmt("R2##{}", u64(t)), ImGuiDataType_Double, &t->m_R2, 0.001f, &min, &max, "%.6f Ohm");
+			if (ImGui::DragScalar(vfmt("Ratio##{}", u64(t)), ImGuiDataType_Double, &r, 0.001f, &min, &max, "%.6f"))
+			{
+				t->SetRatio(r);
+			}
+		};
+
+	TransformerParams(&t->m_T[0]);
+	ImGui::Separator();
+	TransformerParams(&t->m_T[1]);
+}
+
+std::string TransformerWithMiddlePin::Parser_WriteElementData(eElement* elem)
+{
+	SimTy* t = static_cast<SimTy*>(elem);
+	return std::format("{:.6f} {:.6f} {:.6f} {:.6f} {:.6f} {:.6f}",
+		t->m_T[0].m_L1, t->m_T[0].m_L2, t->m_T[0].m_CouplCoef,
+		t->m_T[1].m_L1, t->m_T[1].m_L2, t->m_T[1].m_CouplCoef);
+	
+}
+
+void TransformerWithMiddlePin::Parser_ReadElementData(eElement* elem, const std::string& data)
+{
+	SimTy* t = static_cast<SimTy*>(elem);
+	if (auto result = scn::scan<double, double, double, double, double, double>(data, "{} {} {} {} {} {}"))
+	{
+		auto [L01, L02, k0, L11, L12, k1] = result->values();
+		t->m_T[0].m_L1 = L01;
+		t->m_T[0].m_L2 = L02;
+		t->m_T[0].m_CouplCoef = k0;
+
+		t->m_T[1].m_L1 = L11;
+		t->m_T[1].m_L2 = L12;
+		t->m_T[1].m_CouplCoef = k1;
+	}
+
+}
+
+KPTSH::KPTSH()
+	: eDrawableBase("assets\\kptsh.png")
+	, m_groupOffsets
+	{
+		{ 286.0f, 300.0f - 12.0f},
+		{ 286.0f, 650.0f - 12.0f},
+		{ 286.0f, 1000.0f - 12.0f },
+	}
+{
+	GetTexture().setSmooth(true);
+	m_PinPositions = 
+	{
+		{ 0.0f, 300.0f  }, { float(m_sprite.getTextureRect().size.x), 300.0f },
+		{ 0.0f, 650.0f  }, { float(m_sprite.getTextureRect().size.x), 650.0f },
+		{ 0.0f, 1000.0f }, { float(m_sprite.getTextureRect().size.x), 1000.0f },
+		{ 0.0f, 1500.0f }, { float(m_sprite.getTextureRect().size.x), 1500.0f },
+	};
+	SetPosition(GetPosition());
+}
+
+
+void KPTSH::Draw()
+{
+	dlDrawList::getWindow()->draw(m_sprite);
+	m_Groups[0].Draw();
+	m_Groups[1].Draw();
+	m_Groups[2].Draw();
+
+	//for (auto& pos : m_PinPositions)
+	//{
+	//	DrawCircle(m_sprite.getPosition() + pos, 10.0f, sf::Color::Red);
+	//}
+}
+
+std::string KPTSH::Parser_WriteElementData(eElement* elem)
+{
+	SimTy* kptsh = static_cast<SimTy*>(elem);
+	return std::to_string(kptsh->GetType());
+}
+
+void KPTSH::Parser_ReadElementData(eElement* elem, const std::string& data)
+{
+	SimTy* kptsh = static_cast<SimTy*>(elem);
+	kptsh->SetType(std::stoi(data));
+}
+
+void KPTSH::UIParams(eElement* element)
+{
+	SimTy* kptsh = static_cast<SimTy*>(element);
+	const char* items[] = { "TYPE 5", "TYPE 7", };
+
+	static int selected = kptsh->m_Type == 5 ? 0 : 1;
+	if (ImGui::Combo("Type", &selected, items, std::size(items)))
+	{
+		selected == 0 ? kptsh->SetType(5) : kptsh->SetType(7);
+	}
+
+	ImGui::Text("Z: %s", kptsh->m_Z.GetState() == eRelayContactsGroup::State::n11_n12 ? "n11_n12" : "n11_n13");
+	ImGui::Text("J: %s", kptsh->m_J.GetState() == eRelayContactsGroup::State::n11_n12 ? "n11_n12" : "n11_n13");
+	ImGui::Text("KJ: %s", kptsh->m_KJ.GetState() == eRelayContactsGroup::State::n11_n12 ? "n11_n12" : "n11_n13");
+	
+	ImGui::Text("t: %.5f", kptsh->m_Timer);
+}
+
+void KPTSH::SetPosition(sf::Vector2f pos)
+{
+	m_sprite.setPosition(pos);
+	m_Groups[0].SetPosition(pos + m_groupOffsets[0]);
+	m_Groups[1].SetPosition(pos + m_groupOffsets[1]);
+	m_Groups[2].SetPosition(pos + m_groupOffsets[2]);
+}
+
+void KPTSH::Update(DrawableCircuit& circ, eElement* elem)
+{
+	SimTy* kptsh = static_cast<SimTy*>(elem);
+	m_Groups[0].SetStateToDraw(kptsh->m_Z.GetState());
+	m_Groups[1].SetStateToDraw(kptsh->m_J.GetState());
+	m_Groups[2].SetStateToDraw(kptsh->m_KJ.GetState());
+}
+
+ZBF::ZBF()
+	: eDrawableBase("assets\\zbf.png")
+{
+	GetTexture().setSmooth(true);
+	m_PinPositions =
+	{
+		{ 100.0f, 0.0f }, 		
+		{ 100.0f, float(m_sprite.getTextureRect().size.y) },
+		{ 400.0f, 0.0f }, 		
+		{ 400.0f, float(m_sprite.getTextureRect().size.y) },
+	};
+}
+
+void ZBF::Draw()
+{
+	dlDrawList::getWindow()->draw(m_sprite);
+}

@@ -57,7 +57,6 @@ void Circuit::RemoveElement(eElement* element)
 		return;
 
 	auto it = std::ranges::find_if(m_Elements, [element](const UPtrElementTy& e) { return e.get() == element; });
-
 	if (it != m_Elements.end())
 	{
 		m_Elements.erase(it);			// Pins will be released from connected nodes in destructor
@@ -149,7 +148,7 @@ eNode* Circuit::LookupGroundNode()
 
 	if (!groundNode)
 	{
-		std::cout << "Circuit::LookupGroundNode() -> Failed to find gnd node" << std::endl;
+		//std::cout << "Circuit::LookupGroundNode() -> Failed to find gnd node" << std::endl;
 		groundNode = m_Nodes[0].get();	// just take the first one
 	}
 
@@ -181,9 +180,9 @@ u64 Circuit::GetNodeMtxIndex(eNode* node)
 }
 
 
-void Circuit::Solve()
+void Circuit::Solve(bool decompose)
 {
-	m_Matrix.Solve();
+	m_Matrix.Solve(decompose);
 	for (auto& node : m_Nodes)
 	{
 		if (node.get() == m_GroundNode)
@@ -690,7 +689,7 @@ void Simulation::Simulate(double frameTime, const double step)
 	if (sm_Circuit->GetNodes().size() == 0)
 		return;
 
-#define LOG_DATA 1
+#define LOG_DATA 0
 
 #if LOG_DATA
 	static std::ofstream file("sim_results.txt");
@@ -700,16 +699,19 @@ void Simulation::Simulate(double frameTime, const double step)
 	file << "-----------------------------------\n";
 #endif
 
+	bool firstStep = true;
+
 	for (size_t i = 0; i < NumSteps; i++)
 	{
 		double tickTime = startTime + step * i;
 
 		sm_Circuit->GetMatrix().Clear();
 		sm_Circuit->StampElements(step);
-		sm_Circuit->Solve();
+		sm_Circuit->Solve(firstStep);
 		sm_Circuit->UpdateElements(step);
 		UpdateOscilloscopes(tickTime);
 
+		firstStep = false;
 #if LOG_DATA
 		file << std::format("Step: {}\n", i);
 		sm_Circuit->GetMatrix().Print(file);
@@ -730,7 +732,7 @@ using stack_unordered_set = std::unordered_set<T, std::hash<T>, std::equal_to<T>
 
 void Simulation::UpdateOscilloscopes(double t)
 {
-	stack_unordered_set<eElement*, 300> existingElements;
+	stack_unordered_set<eElement*, 1500> existingElements;
 	for (auto& elem : sm_Circuit->GetElements())
 	{
 		existingElements.insert(elem.get());
@@ -741,13 +743,9 @@ void Simulation::UpdateOscilloscopes(double t)
 		}
 	}
 
-	for (auto it = sm_ElemToOscilloscope.begin(); it != sm_ElemToOscilloscope.end(); )
-	{
-		if (!existingElements.contains(it->first))
-			it = sm_ElemToOscilloscope.erase(it);
-		else
-			++it;
-	}
+	std::erase_if(sm_ElemToOscilloscope, [&existingElements](const auto& pair) {
+			return !existingElements.contains(pair.first);
+		});
 }
 
 

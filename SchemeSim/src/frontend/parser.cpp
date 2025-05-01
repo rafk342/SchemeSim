@@ -12,6 +12,7 @@ void CircuitParser::LoadFromFile(const std::filesystem::path& path)
 		return;
 
 	DrawableCircuit* drawableCirc = m_editor->m_DrawableCircuit;
+	drawableCirc->Destroy();
 
 	std::ifstream file(path);
 	if (!file.is_open())
@@ -59,11 +60,14 @@ void CircuitParser::LoadFromFile(const std::filesystem::path& path)
 				if (line == "next")
 				{
 					drawableCirc->AddWire();
+					drawableCirc->GetDrawableElements().back()->Hide() = ReadInt(lines[++i]);
 					continue;
 				}
+
 				sf::Vector2f start = ReadVec2f(line);
 				sf::Vector2f end = ReadVec2f(lines[++i]);
-				drawableCirc->m_DrawableElements.back()->As<Wire>()->GetSegments().push_back({ start, end });
+				drawableCirc->GetDrawableElements().back()->As<Wire>()->GetSegments().push_back({ start, end });
+				
 			}
 		}
 
@@ -80,42 +84,23 @@ void CircuitParser::LoadFromFile(const std::filesystem::path& path)
 					break;
 
 				DrawableType type = DrawableType(std::stoi(line));
-				std::shared_ptr<eDrawableBase> drawableBase;
-				switch (type)
-				{
-				case DrawableType::DRAWABLE_RESISTOR:
-					drawableBase = drawableCirc->AddResistor();
-					break;
-				case DrawableType::DRAWABLE_BATTERY:
-					drawableBase = drawableCirc->AddBattery();
-					break;
-				case DrawableType::DRAWABLE_CAPACITOR:
-					drawableBase = drawableCirc->AddCapacitor();
-					break;
-				case DrawableType::DRAWABLE_INDUCTOR:
-					drawableBase = drawableCirc->AddInductor();
-					break;
-				case DrawableType::DRAWABLE_DIODE:
-					drawableBase = drawableCirc->AddDiode();
-					break;
-				default:
-					SM_ASSERT(false, "Unknown element type");
-					break;
-				}
+				std::shared_ptr<eDrawableBase> drawableBase = drawableCirc->CreateElement(type);
 
+				bool hide = ReadInt(lines[++i]) != 0;
 				sf::Vector2f pos = ReadVec2f(lines[++i]);
 				float rot = ReadFloat(lines[++i]);
 				bool flippedX = ReadInt(lines[++i]) != 0;
 				bool flippedY = ReadInt(lines[++i]) != 0;
 				std::string data = lines[++i];
 
-				drawableBase->SetPosition(pos);
-				drawableBase->SetRotation(rot);
-				drawableBase->Parser_ReadElementData(drawableCirc->GetAssociatedElectricElement(drawableBase.get()), data);
 				if (flippedX)
 					drawableBase->Flip(flipAxis::X);
 				if (flippedY)
 					drawableBase->Flip(flipAxis::Y);
+				drawableBase->SetPosition(pos);
+				drawableBase->SetRotation(rot);
+				drawableBase->Parser_ReadElementData(drawableCirc->GetAssociatedElectricElement(drawableBase.get()), data);
+				drawableBase->Hide() = hide;
 			}
 		}
 	}
@@ -131,8 +116,8 @@ void CircuitParser::SaveToFile(const std::filesystem::path& path)
 		return;
 
 	DrawableCircuit* drawableCirc = m_editor->m_DrawableCircuit;
-	std::deque<std::shared_ptr<eDrawableBase>>& elements = drawableCirc->m_DrawableElements;
-	std::unordered_map<std::shared_ptr<ConnectionDot>, eNode*>& connections = drawableCirc->m_Connections;
+	auto& elements = drawableCirc->GetDrawableElements();
+	auto& connections = drawableCirc->m_Connections;
 	if (!drawableCirc)
 		return;
 
@@ -162,6 +147,8 @@ void CircuitParser::SaveToFile(const std::filesystem::path& path)
 			continue;
 
 		file << "next\n";
+
+		WriteInt(file, int(wire->Hide()));
 		for (auto& segment : segments)
 		{
 			WriteVec2f(file, segment.vStart);
@@ -175,17 +162,15 @@ void CircuitParser::SaveToFile(const std::filesystem::path& path)
 	{
 		if (drawableBase->IsWire())
 			continue;
+
 		file << "next\n";
 
-		DrawableType type = drawableBase->GetType();
-		file << int(type) << "\n";
-
-		sf::Vector2f pos = drawableBase->GetPosition();
-		float rot = drawableBase->GetRotation().asDegrees();
-		WriteVec2f(file, pos);
-		WriteFloat(file, rot);
-		WriteInt(file, int(drawableBase->IsFlippedOverX()));
-		WriteInt(file, int(drawableBase->IsFlippedOverY()));
+		WriteInt(file,		int(drawableBase->GetType()));
+		WriteInt(file,		int(drawableBase->Hide()));
+		WriteVec2f(file,	drawableBase->GetPosition());
+		WriteFloat(file,	drawableBase->GetRotation().asDegrees());
+		WriteInt(file,		int(drawableBase->IsFlippedOverX()));
+		WriteInt(file,		int(drawableBase->IsFlippedOverY()));
 
 		std::string data = drawableBase->Parser_WriteElementData(drawableCirc->GetAssociatedElectricElement(drawableBase.get()));
 		file << data << "\n";

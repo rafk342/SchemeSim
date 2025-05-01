@@ -102,24 +102,6 @@ ePin* eElement::GetEpin(int num)
 }
 
 
-const char* eElement::GetTypeName()
-{
-	switch (GetType())
-	{
-	case ty_Resistor:		return "Resistor";
-	case ty_Capacitor:		return "Capacitor";
-	case ty_Inductor:		return "Inductor";
-	case ty_VoltageSource:	return "Voltage Source";
-	case ty_Diode:			return "Diode";
-	case ty_Potentiometer:	return "Potentiometer";
-	case ty_Button:			return "Button";
-	case ty_Transformer:    return "Transformer";
-	case ty_RelayContact:   return "Relay Contact";
-	default:				return "Unknown";
-	}
-}
-
-
 void eElement::ReleaseConnectedNodes()
 {
 	for (ePin& pin : m_ePins)
@@ -181,8 +163,8 @@ void eResistor::Stamp(CircuitMtx& mtx, eNode* GndNode, double dt)
 
 	double G = 1.0 / m_Resistance;
 
-	Eigen::MatrixXd& A = mtx.GetMatrix();
-	Eigen::VectorXd& b = mtx.GetVector();
+	auto& A = mtx.GetMatrix();
+	auto& b = mtx.GetVector();
 
 	u64 idx1 = node1->GetIndex();
 	u64 idx2 = node2->GetIndex();
@@ -193,18 +175,18 @@ void eResistor::Stamp(CircuitMtx& mtx, eNode* GndNode, double dt)
 
 	if (node1 != GndNode && node2 != GndNode)
 	{
-		A(i, i) += G;
-		A(j, j) += G;
-		A(j, i) -= G;
-		A(i, j) -= G;
+		A.coeffRef(i, i) += G;
+		A.coeffRef(j, j) += G;
+		A.coeffRef(j, i) -= G;
+		A.coeffRef(i, j) -= G;
 	}
 	else if (node1 == GndNode && node2 != GndNode)
 	{
-		A(j, j) += G;
+		A.coeffRef(j, j) += G;
 	}
 	else if (node2 == GndNode && node1 != GndNode)
 	{
-		A(i, i) += G;
+		A.coeffRef(i, i) += G;
 	}
 }
 
@@ -295,10 +277,7 @@ ePin* ePotentiometer::GetEpin(int num)
 
 void ePotentiometer::SetSliderPosition(double position)
 {
-	if (position < 0.0) position = 0.0;
-	if (position > 1.0) position = 1.0;
-
-	m_SliderPosition = position;
+	m_SliderPosition = std::clamp(position, 0.0, 1.0);
 
 	double min = 1e-9;
 	double r1 = m_TotalResistance * m_SliderPosition;
@@ -320,8 +299,7 @@ ePin*	ePotentiometer::GetMiddlePin()				{ return m_RWire.GetEpin(1); }
 void ePotentiometer::SetTotalResistance(double resistance)
 {
 	m_TotalResistance = resistance;
-	m_R1.SetResistance(m_TotalResistance * m_SliderPosition);
-	m_R2.SetResistance(m_TotalResistance * (1.0 - m_SliderPosition));
+	SetSliderPosition(m_SliderPosition); // Recalculate resistances
 }
 
 
@@ -405,8 +383,8 @@ void eVoltageSource::Stamp(CircuitMtx& mtx, eNode* GndNode, double dt)
 	if (!n1 || !n2)
 		return;
 
-	Eigen::MatrixXd& A = mtx.GetMatrix();
-	Eigen::VectorXd& b = mtx.GetVector();
+	auto& A = mtx.GetMatrix();
+	auto& b = mtx.GetVector();
 
 	u64 idx1 = n1->GetIndex();
 	u64 idx2 = n2->GetIndex();
@@ -418,20 +396,20 @@ void eVoltageSource::Stamp(CircuitMtx& mtx, eNode* GndNode, double dt)
 
 	if (n1 != GndNode && n2 != GndNode) 
 	{
-		A(eqIdx, i) = 1.0;
-		A(eqIdx, j) = -1.0;
-		A(i, eqIdx) = 1.0;
-		A(j, eqIdx) = -1.0;
+		A.coeffRef(eqIdx, i) = 1.0;
+		A.coeffRef(eqIdx, j) = -1.0;
+		A.coeffRef(i, eqIdx) = 1.0;
+		A.coeffRef(j, eqIdx) = -1.0;
 	}
 	else if (n1 == GndNode && n2 != GndNode)
 	{
-		A(eqIdx, j) = -1.0;
-		A(j, eqIdx) = -1.0;
+		A.coeffRef(eqIdx, j) = -1.0;
+		A.coeffRef(j, eqIdx) = -1.0;
 	}
 	else if (n2 == GndNode && n1 != GndNode) 
 	{
-		A(eqIdx, i) = 1.0;
-		A(i, eqIdx) = 1.0;
+		A.coeffRef(eqIdx, i) = 1.0;
+		A.coeffRef(i, eqIdx) = 1.0;
 	}
 
 	b(eqIdx) = GetVoltage(m_Time);
@@ -483,8 +461,8 @@ void eCapacitor::Stamp(CircuitMtx& mtx, eNode* GndNode, double dt)
 	double G = 2.0 * m_Capacitance / dt;
 	double prevVoltage = m_PrevVoltage;
 
-	Eigen::MatrixXd& A = mtx.GetMatrix();
-	Eigen::VectorXd& b = mtx.GetVector();
+	auto& A = mtx.GetMatrix();
+	auto& b = mtx.GetVector();
 
 	u64 idx1 = node1->GetIndex();
 	u64 idx2 = node2->GetIndex();
@@ -493,26 +471,26 @@ void eCapacitor::Stamp(CircuitMtx& mtx, eNode* GndNode, double dt)
 	u64 i = (idx1 > GndIdx) ? idx1 - 1 : idx1;
 	u64 j = (idx2 > GndIdx) ? idx2 - 1 : idx2;
 
+	double Ieq = G * prevVoltage;
 	if (node1 != GndNode && node2 != GndNode)
 	{
-		A(i, i) += G;
-		A(j, j) += G;
-		A(i, j) -= G;
-		A(j, i) -= G;
+		A.coeffRef(i, i) += G;
+		A.coeffRef(j, j) += G;
+		A.coeffRef(i, j) -= G;
+		A.coeffRef(j, i) -= G;
 
-		double Ieq = G * prevVoltage;
 		b(i) += Ieq;
 		b(j) -= Ieq;
 	}
 	else if (node1 == GndNode && node2 != GndNode)
 	{
-		A(j, j) += G;
-		b(j) -= G * prevVoltage;
+		A.coeffRef(j, j) += G;
+		b.coeffRef(j) -= Ieq;
 	}
 	else if (node2 == GndNode && node1 != GndNode)
 	{
-		A(i, i) += G;
-		b(i) += G * prevVoltage;
+		A.coeffRef(i, i) += G;
+		b.coeffRef(i) += Ieq;
 	}
 }
 
@@ -675,8 +653,8 @@ void eDiode::Stamp(CircuitMtx& mtx, eNode* GndNode, double dt)
 	if (!node1 || !node2 || node1 == node2)
 		return;
 
-	Eigen::MatrixXd& A = mtx.GetMatrix();
-	Eigen::VectorXd& b = mtx.GetVector();
+	auto& A = mtx.GetMatrix();
+	auto& b = mtx.GetVector();
 
 	u64 idx1 = node1->GetIndex();
 	u64 idx2 = node2->GetIndex();
@@ -687,21 +665,21 @@ void eDiode::Stamp(CircuitMtx& mtx, eNode* GndNode, double dt)
 
 	if (node1 != GndNode && node2 != GndNode) 
 	{
-		A(i, i) += m_G;
-		A(j, j) += m_G;
-		A(i, j) -= m_G;
-		A(j, i) -= m_G;
-		b(i) -= m_Ieq;
-		b(j) += m_Ieq;
+		A.coeffRef(i, i) += m_G;
+		A.coeffRef(j, j) += m_G;
+		A.coeffRef(i, j) -= m_G;
+		A.coeffRef(j, i) -= m_G;
+		b.coeffRef(i) -= m_Ieq;
+		b.coeffRef(j) += m_Ieq;
 	}
 	else if (node1 == GndNode && node2 != GndNode)
 	{
-		A(j, j) += m_G;
-		b(j) += m_Ieq;
+		A.coeffRef(j, j) += m_G;
+		b.coeffRef(j) += m_Ieq;
 	}
 	else if (node2 == GndNode && node1 != GndNode)
 	{
-		A(i, i) += m_G;
+		A.coeffRef(i, i) += m_G;
 		b(i) -= m_Ieq;
 	}
 }
@@ -718,8 +696,8 @@ void eDiode::Update(CircuitMtx& mtx, double dt)
 	if (Vd >= 0 || m_ZVoltage == 0)  	// regular diode or forward-biased zener
 	{
 		double expVd = std::exp(Vd * m_Vdcoef);
-		//m_G = m_Vdcoef * m_Is * expVd + Gmin;
-		m_G = 0.7 * m_G + 0.3 * (m_Vdcoef * m_Is * expVd + Gmin);
+		m_G = m_Vdcoef * m_Is * expVd + Gmin;
+		//m_G = 0.7 * m_G + 0.3 * (m_Vdcoef * m_Is * expVd + Gmin);
 		m_Ieq = (expVd - 1) * m_Is - m_G * Vd;
 	}
 	else
@@ -944,8 +922,8 @@ void eInductor::Stamp(CircuitMtx& mtx, eNode* GndNode, double dt)
 	if (!node1 || !node2 || node1 == node2)
 		return;
 
-	Eigen::MatrixXd& A = mtx.GetMatrix();
-	Eigen::VectorXd& b = mtx.GetVector();
+	auto& A = mtx.GetMatrix();
+	auto& b = mtx.GetVector();
 
 	u64 idx1 = node1->GetIndex();
 	u64 idx2 = node2->GetIndex();
@@ -955,20 +933,22 @@ void eInductor::Stamp(CircuitMtx& mtx, eNode* GndNode, double dt)
 	u64 i = (idx1 > GndIdx) ? idx1 - 1 : idx1;
 	u64 j = (idx2 > GndIdx) ? idx2 - 1 : idx2;
 
-
 	if (node1 != GndNode)
 	{
-		A(i, currentIdx) += 1.0;
-		A(currentIdx, i) += 1.0;
+		A.coeffRef(i, currentIdx) += 1.0;
+		A.coeffRef(currentIdx, i) += 1.0;
 	}
 	if (node2 != GndNode)
 	{
-		A(j, currentIdx) -= 1.0;
-		A(currentIdx, j) -= 1.0;
+		A.coeffRef(j, currentIdx) -= 1.0;
+		A.coeffRef(currentIdx, j) -= 1.0;
 	}
 
-	A(currentIdx, currentIdx) -= m_Inductance / dt;			// dI/dt = (I(t) - I(t-Δt))/Δt
-	b(currentIdx) -= (m_Inductance / dt) * m_prevCurrent;	// b(IL) -= (L/Δt) * I(t-Δt)
+	//A.coeffRef(currentIdx, currentIdx) -= m_Inductance / dt;	// dI/dt = ( I(t) - I(t-Δt) ) / Δt
+	//b(currentIdx) -= (m_Inductance / dt) * m_prevCurrent;		// b(IL) -= (L/Δt) * I(t-Δt)
+	
+	A.coeffRef(currentIdx, currentIdx) -= m_Inductance / dt + m_R;
+	b(currentIdx) -= (m_Inductance / dt) * m_prevCurrent;
 }
 
 
@@ -1016,17 +996,18 @@ double eInductor::GetCurrent()
 // 											eTransformer
 
 
-eTransformer::eTransformer(double Inductance1, double ratio) 
-	: eTransformer(Inductance1, Inductance1 * std::pow(ratio, 2), 0.997)
+eTransformer::eTransformer(double L1, double ratio)
+	: eTransformer(L1, L1 * std::pow(ratio, 2), 0.995)
 { }
 
-eTransformer::eTransformer(double Inductance1, double Inductance2, double transformCoef)
-	: m_L1(Inductance1)
-	, m_L2(Inductance2)
+
+eTransformer::eTransformer(double L1, double L2, double transformCoef)
+	: m_L1(L1)
+	, m_L2(L2)
 	, m_CouplCoef(transformCoef)
 	, m_I1(0.0)
 	, m_I2(0.0)
-{   //
+{
  	// 0 ───┐   ┌─── 2
 	//     *) │ (*
 	// 	    ) │ ( 
@@ -1060,8 +1041,8 @@ void eTransformer::Stamp(CircuitMtx& mtx, eNode* GndNode, double dt)
 	if (!n1 || !n2 || !n3 || !n4)
 		return;
 
-	Eigen::MatrixXd& A = mtx.GetMatrix();
-	Eigen::VectorXd& b = mtx.GetVector();
+	auto& A = mtx.GetMatrix();
+	auto& b = mtx.GetVector();
 	u64 gndIdx = GndNode->GetIndex();
 
 	auto GetNodeIndex = [gndIdx](eNode* node) -> u64
@@ -1082,31 +1063,31 @@ void eTransformer::Stamp(CircuitMtx& mtx, eNode* GndNode, double dt)
 
 	if (n1 != GndNode) 
 	{
-		A(i1, m_I1_Idx) += 1.0;
-		A(m_I1_Idx, i1) += 1.0;
+		A.coeffRef(i1, m_I1_Idx) += 1.0;
+		A.coeffRef(m_I1_Idx, i1) += 1.0;
 	}
 	if (n2 != GndNode) 
 	{
-		A(i2, m_I1_Idx) -= 1.0;
-		A(m_I1_Idx, i2) -= 1.0;
+		A.coeffRef(i2, m_I1_Idx) -= 1.0;
+		A.coeffRef(m_I1_Idx, i2) -= 1.0;
 	}
 
 
 	if (n3 != GndNode) 
 	{
-		A(i3, m_I2_Idx) +=  1.0;
-		A(m_I2_Idx, i3) +=  1.0;
+		A.coeffRef(i3, m_I2_Idx) +=  1.0;
+		A.coeffRef(m_I2_Idx, i3) +=  1.0;
 	}
 	if (n4 != GndNode)
 	{
-		A(i4, m_I2_Idx) -=  1.0;
-		A(m_I2_Idx, i4) -=  1.0;
+		A.coeffRef(i4, m_I2_Idx) -=  1.0;
+		A.coeffRef(m_I2_Idx, i4) -=  1.0;
 	}
 
-	A(m_I1_Idx, m_I1_Idx) -= L1 / dt;
-	A(m_I1_Idx, m_I2_Idx) -= M / dt;
-	A(m_I2_Idx, m_I1_Idx) -= M / dt;
-	A(m_I2_Idx, m_I2_Idx) -= L2 / dt;
+	A.coeffRef(m_I1_Idx, m_I1_Idx) -= L1 / dt;
+	A.coeffRef(m_I1_Idx, m_I2_Idx) -= M / dt;
+	A.coeffRef(m_I2_Idx, m_I1_Idx) -= M / dt;
+	A.coeffRef(m_I2_Idx, m_I2_Idx) -= L2 / dt;
 
 	b(m_I1_Idx) -= (L1 * m_I1 + M * m_I2) / dt;
 	b(m_I2_Idx) -= (M * m_I1 + L2 * m_I2) / dt;
@@ -1117,10 +1098,89 @@ void eTransformer::Update(CircuitMtx& mtx, double dt)
 {
 	m_I1 = mtx.GetSolution()(m_I1_Idx);
 	m_I2 = mtx.GetSolution()(m_I2_Idx);
-	
-	double v1 = GetEpin(0)->GetVoltage() - GetEpin(1)->GetVoltage();
-	double v2 = GetEpin(2)->GetVoltage() - GetEpin(3)->GetVoltage();
 }
+
+double eTransformer::GetRatio() const			{ return m_L1 / m_L2; }
+void eTransformer::SetRatio(double ratio)		{ m_L2 = m_L1 / ratio; } 
+double eTransformer::GetInductance1() const		{ return m_L1; } 
+double eTransformer::GetInductance2() const		{ return m_L2; } 
+
+void eTransformer::SetInductance1(double inductance)
+{
+	m_L1 = inductance;
+	SetRatio(GetRatio()); // update L2
+}
+
+void eTransformer::SetInductance2(double inductance)
+{
+	m_L2 = inductance;
+	SetRatio(GetRatio());
+}
+
+//////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+// 											eTransformerWithMiddlePin
+
+
+eTransformerWithMiddlePin::eTransformerWithMiddlePin(Circuit& circ, double L1, double L2)
+	: m_T {
+		{ L1, 0.5 },
+		{ L2, 0.5 },
+	}
+	, m_Nodes { 
+		circ.CreateNode(),
+		circ.CreateNode(),
+	}
+	, m_Wire { 1e-3 }
+{
+	eNode* rightNode = m_Nodes[0];
+	eNode* leftNode = m_Nodes[1];
+	
+	m_T[0].GetPrimaryPin1()->ConnectToNode(leftNode);
+	m_T[1].GetPrimaryPin2()->ConnectToNode(leftNode);
+
+	m_T[0].GetSecondaryPin2()->ConnectToNode(rightNode);
+	m_T[1].GetSecondaryPin1()->ConnectToNode(rightNode);
+	
+	m_Wire.GetEpin(0)->ConnectToNode(rightNode);
+}
+
+void eTransformerWithMiddlePin::InitMatrix(CircuitMtx& mtx)
+{
+	m_T[0].InitMatrix(mtx);
+	m_T[1].InitMatrix(mtx);
+}
+
+void eTransformerWithMiddlePin::Stamp(CircuitMtx& mtx, eNode* GndNode, double dt)
+{
+	m_T[0].Stamp(mtx, GndNode, dt);
+	m_T[1].Stamp(mtx, GndNode, dt);
+	m_Wire.Stamp(mtx, GndNode, dt);
+}
+
+void eTransformerWithMiddlePin::Update(CircuitMtx& mtx, double dt)
+{
+	m_T[0].Update(mtx, dt);
+	m_T[1].Update(mtx, dt);
+	m_Wire.Update(mtx, dt);
+}
+
+void eTransformerWithMiddlePin::Reset()
+{
+	m_T[0].Reset();
+	m_T[1].Reset();
+}
+
+ePin* eTransformerWithMiddlePin::GetEpin(int num)
+{
+	return	num == 0 ? m_T[0].GetPrimaryPin2() :
+			num == 1 ? m_T[1].GetPrimaryPin1() :
+
+			num == 2 ? m_T[1].GetSecondaryPin2() :
+			num == 3 ? m_T[0].GetSecondaryPin1() :
+		
+			num == 4 ? m_Wire.GetEpin(1) : nullptr;
+}
+
 
 //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 // 											eButton
@@ -1138,9 +1198,6 @@ void eButton::Stamp(CircuitMtx& mtx, eNode* GndNode, double dt)
 	m_R.Stamp(mtx, GndNode, dt);
 }
 
-void eButton::Update(CircuitMtx& mtx, double dt)
-{
-}
 
 void eButton::SetNormalState(NormalState state)
 {
@@ -1178,7 +1235,7 @@ eRelayContactsGroup::eRelayContactsGroup(Circuit& circuit)
 	, m_State(n11_n12)
 	, m_Circuit(&circuit)
 {
-	m_R11.GetEpin(1)->ConnectToNode(m_MiddleNode);
+	m_R11.GetEpin(0)->ConnectToNode(m_MiddleNode);
 	m_R12.GetEpin(0)->ConnectToNode(m_MiddleNode);
 	m_R13.GetEpin(0)->ConnectToNode(m_MiddleNode);
 	SetState(m_State);
@@ -1204,10 +1261,11 @@ ePin* eRelayContactsGroup::GetEpin(int num)
 	ePin* pin = nullptr;
 	switch (RelayContact(num))
 	{
-	case eRelayContactsGroup::N11: pin = m_R11.GetEpin(0); break;
+	case eRelayContactsGroup::N11: pin = m_R11.GetEpin(1); break;
 	case eRelayContactsGroup::N12: pin = m_R12.GetEpin(1); break;
 	case eRelayContactsGroup::N13: pin = m_R13.GetEpin(1); break;
 	default:
+		SM_ASSERT(false, vfmt("eRelayContactsGroup::GetEpin({}) -> Invalid pin index", num));
 		break;
 	}
 	return pin;
@@ -1227,16 +1285,17 @@ void eRelayContactsGroup::SetCoilName(const std::string& name)
 
 void eRelayContactsGroup::SetState(State state)
 {
+	m_State = state;
 	if (state == n11_n12)
-	{
+	{	
 		m_R11.SetResistance(minResistance);
 		m_R12.SetResistance(minResistance);
 		m_R13.SetResistance(maxResistance);
 	}
 	else
 	{
-		m_R11.SetResistance(minResistance);
-		m_R12.SetResistance(maxResistance);
+		m_R11.SetResistance(maxResistance);
+		m_R12.SetResistance(minResistance);
 		m_R13.SetResistance(minResistance);
 	}
 }
@@ -1247,21 +1306,21 @@ void eRelayContactsGroup::SetState(State state)
 
 
 eCoil::eCoil(double Inductance, double ReleaseDelay)
-	: eInductor(Inductance)
+	: m_l(Inductance)
 	, m_ReleaseDelay(ReleaseDelay)
 { }
 
 
+void eCoil::Stamp(CircuitMtx& mtx, eNode* GndNode, double dt)
+{
+	m_l.Stamp(mtx, GndNode, dt);
+}
+
+
 void eCoil::Update(CircuitMtx& mtx, double dt)
 {
-	ePin& pin0 = m_ePins[0];
-	ePin& pin1 = m_ePins[1];
-
-	if (!pin0.IsConnectedToNode() && !pin1.IsConnectedToNode())
-		return;
-
-	double current = mtx.GetSolution()(m_CurrenIndex);		
-	m_prevCurrent = current;
+	m_l.Update(mtx, dt);
+	double current = m_l.GetCurrent();
 
 	if (std::abs(current) > m_CurrThreshold)
 	{
@@ -1279,6 +1338,21 @@ void eCoil::Update(CircuitMtx& mtx, double dt)
 	}
 }
 
+void eCoil::InitMatrix(CircuitMtx& mtx)
+{
+	m_l.InitMatrix(mtx);
+}
+
+void eCoil::Reset()
+{
+	m_l.Reset();
+}
+
+ePin* eCoil::GetEpin(int num)
+{
+	return m_l.GetEpin(num);
+}
+
 void eCoil::SetName(const std::string& name)
 {
 	m_Name = name;
@@ -1286,127 +1360,190 @@ void eCoil::SetName(const std::string& name)
 }
 
 
-#if vComposeCoil
-eCoilWithRectifier::eCoilWithRectifier(Circuit& circ, double Inductance, double ReleaseDelay)
-	: r(10)
-	, wire(1e-3)
-	, m_InnerNodes{ circ.CreateNode(), circ.CreateNode() }
-	, m_Circuit(&circ)
-{ 
-	// --wire--n0----|<|----n1-----r----
-	//          |           |
-	//          |----l------|
-	
-	eNode* n0 = m_InnerNodes[0];
-	eNode* n1 = m_InnerNodes[1];
-	l = m_Circuit->AddElement<eCoil>(Inductance, ReleaseDelay);
-	
-	d.GetCathodePin()->ConnectToNode(n0);
-	wire.GetEpin(0)->ConnectToNode(n0);
-	l->GetEpin(0)->ConnectToNode(n0);
 
-	d.GetAnodePin()->ConnectToNode(n1);
-	r.GetEpin(0)->ConnectToNode(n1);
-	l->GetEpin(1)->ConnectToNode(n1);
+//////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+// 											eCoilWithRectifier
+
+
+eCoilWithRectifier::eCoilWithRectifier(Circuit& circ, double Inductance, double ReleaseDelay)
+	: eCoil(Inductance, ReleaseDelay)
+	, m_r(5.0f)
+	, m_db(circ)
+{
+	m_Circuit = &circ;
+	eNode* n0 = m_Nodes[0] = circ.CreateNode();
+	eNode* n1 = m_Nodes[1] = circ.CreateNode();
+	eNode* n2 = m_Nodes[2] = circ.CreateNode();
+
+	m_db.GetOutPlus()->ConnectToNode(n0);
+	m_db.GetOutMinus()->ConnectToNode(n2);
+
+	m_l.GetEpin(0)->ConnectToNode(n0);
+	m_l.GetEpin(1)->ConnectToNode(n1);
+	
+	m_r.GetEpin(0)->ConnectToNode(n1);
+	m_r.GetEpin(1)->ConnectToNode(n2);
 }
 
 eCoilWithRectifier::~eCoilWithRectifier()
 {
-	m_Circuit->RemoveElement(l);
-	m_Circuit->RemoveNode(m_InnerNodes[0]);
-	m_Circuit->RemoveNode(m_InnerNodes[1]);
+	m_Circuit->RemoveNode(m_Nodes[0]);
+	m_Circuit->RemoveNode(m_Nodes[1]);
+	m_Circuit->RemoveNode(m_Nodes[2]);
+}
+
+ePin* eCoilWithRectifier::GetEpin(int num)
+{
+	return num == 0 ? m_db.GetIn0() : m_db.GetIn1();
 }
 
 void eCoilWithRectifier::Stamp(CircuitMtx& mtx, eNode* GndNode, double dt)
 {
-	l->Stamp(mtx, GndNode, dt);
-	d.Stamp(mtx, GndNode, dt);
-	r.Stamp(mtx, GndNode, dt);
-	wire.Stamp(mtx, GndNode, dt);
+	eCoil::Stamp(mtx, GndNode, dt);
+	m_db.Stamp(mtx, GndNode, dt);
+	m_r.Stamp(mtx, GndNode, dt);
 }
 
 void eCoilWithRectifier::Update(CircuitMtx& mtx, double dt)
 {
-	l->Update(mtx, dt);
-	d.Update(mtx, dt);
-	r.Update(mtx, dt);
-	wire.Update(mtx, dt);
+	eCoil::Update(mtx, dt);
+	m_db.Update(mtx, dt);
 }
 
-void eCoilWithRectifier::InitMatrix(CircuitMtx& mtx)
+
+//////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+// 											eKPTSH
+
+
+eKPTSH::eKPTSH(Circuit& circ, int type)
+	: m_Z(circ)
+	, m_J(circ)
+	, m_KJ(circ)
+	, m_R(10.0)
+	, m_Type(KPTSH_TYPE(type))
+{ 
+	SM_ASSERT(type == 5 || type == 7, "eKPTSH: Invalid type. Must be 5 or 7");
+}
+
+eKPTSH::~eKPTSH()
+{ }
+
+ePin* eKPTSH::GetEpin(int num)
 {
-	l->InitMatrix(mtx);
-	d.InitMatrix(mtx);
-	r.InitMatrix(mtx);
-	wire.InitMatrix(mtx);
+	//    11  12
+	// 0 --(Z)-- 1
+	// 
+	//    11  12
+	// 2 --(J)-- 3
+	// 
+	//    11   12
+	// 4 --(kj)-- 5
+	// 
+	// 6 --(R)--- 7
+
+	return  num == 0 ? m_Z.GetEpin(eRelayContactsGroup::N11) :
+			num == 1 ? m_Z.GetEpin(eRelayContactsGroup::N12) :
+			
+			num == 2 ? m_J.GetEpin(eRelayContactsGroup::N11) :
+			num == 3 ? m_J.GetEpin(eRelayContactsGroup::N12) :
+			
+			num == 4 ? m_KJ.GetEpin(eRelayContactsGroup::N11) :
+			num == 5 ? m_KJ.GetEpin(eRelayContactsGroup::N12) :
+			
+			num == 6 ? m_R.GetEpin(0) :
+			num == 7 ? m_R.GetEpin(1) : nullptr;
 }
 
-
-void eCoilWithRectifier::Reset()
+void eKPTSH::Stamp(CircuitMtx& mtx, eNode* GndNode, double dt)
 {
-	l->Reset();
-	d.Reset();
-	r.Reset();
-	wire.Reset();
+	m_Z.Stamp(mtx, GndNode, dt);
+	m_J.Stamp(mtx, GndNode, dt);
+	m_KJ.Stamp(mtx, GndNode, dt);
+	m_R.Stamp(mtx, GndNode, dt);
 }
 
-ePin* eCoilWithRectifier::GetEpin(int num)
+void eKPTSH::Update(CircuitMtx& mtx, double dt)
 {
-	return num == 0 ? wire.GetEpin(1) : r.GetEpin(1);
+	auto SetGroupState = [t = m_Timer](eRelayContactsGroup& g, auto& range)
+		{
+			if (std::ranges::any_of(range, [t](const std::pair<double, double>& r) { return IsInRange(t, r.first, r.second); }))
+				g.SetState(eRelayContactsGroup::n11_n12);
+			else
+				g.SetState(eRelayContactsGroup::n11_n13);
+		};
+
+
+	if (std::abs(m_R.GetCurrent()) < 0.01)
+	{
+		m_Z.SetState(eRelayContactsGroup::n11_n13);
+		m_J.SetState(eRelayContactsGroup::n11_n13);
+		m_KJ.SetState(eRelayContactsGroup::n11_n13);
+		return;
+	}
+
+	switch (m_Type)
+	{
+	case eKPTSH::_5:
+	{
+		constexpr std::pair<double,double> zRanges[] = { { 0.0, 0.35 }, { 0.47, 0.69 }, { 0.81, 1.03 }, };
+		constexpr std::pair<double, double> jRanges[] = { { 0.0, 0.38 }, { 0.5, 0.88 }, };
+		constexpr std::pair<double, double> kjRanges[] = { { 0.0, 0.23 }, { 0.8, 1.03 }, };
+
+		SetGroupState(m_Z, zRanges);
+		SetGroupState(m_J, jRanges);
+		SetGroupState(m_KJ, kjRanges);
+
+		m_Timer = std::fmod(Simulation::CircTime(), KPTSH_5_DURATION);
+		break;
+	}
+	case eKPTSH::_7:
+	{
+		constexpr std::pair<double, double> zRanges[] = { { 0.0, 0.35 }, { 0.47, 0.71 }, { 0.83, 1.07 }, };
+		constexpr std::pair<double, double> jRanges[] = { { 0.0, 0.35 }, { 0.47 , 1.07 }, };
+		constexpr std::pair<double, double> kjRanges[] = { { 0.0, 0.3 }, { 0.93, 1.23 }, };
+		
+		SetGroupState(m_Z, zRanges);
+		SetGroupState(m_J, jRanges);
+		SetGroupState(m_KJ, kjRanges);
+
+		m_Timer = std::fmod(Simulation::CircTime(), KPTSH_7_DURATION);
+		break;
+	}
+	default:
+		break;
+	}
 }
 
-double eCoilWithRectifier::GetCurrent()
+void eKPTSH::SetType(int type)
 {
-	return l->GetCurrent();
+	SM_ASSERT(type == 5 || type == 7, "eKPTSH::SetType() Invalid type. Must be 5 or 7");
+	m_Type = KPTSH_TYPE(type); 
 }
 
-double eCoilWithRectifier::GetVoltDrop()
+//////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+// 											ZBF
+
+
+eZBF::eZBF()
+	: m_R{ 0.0001f, 0.0001f }
+{ }
+
+eZBF::~eZBF()
+{ }
+
+
+ePin* eZBF::GetEpin(int num)
 {
-	return l->GetVoltDrop();
+	return	num == 0 ? m_R[0].GetEpin(0) :
+			num == 1 ? m_R[0].GetEpin(1) :
+			
+			num == 2 ? m_R[1].GetEpin(0) :
+			num == 3 ? m_R[1].GetEpin(1) : nullptr;
 }
 
-#else
-eCoilWithRectifier::eCoilWithRectifier(Circuit& circ, double Inductance, double ReleaseDelay)
-	: /*eCoil*/eInductor(Inductance/*, ReleaseDelay*/)
-	, m_InnerNodes{ circ.CreateNode(), circ.CreateNode() }
-	, m_Circuit(&circ)
+void eZBF::Stamp(CircuitMtx& mtx, eNode* GndNode, double dt)
 {
-#if 0
-	// --wire--n0----|<|----n1-----r----
-	//          |           |
-	//          |----l------|
-#endif
-
-
-	// --wire--n0----l------n1-----r----
-	eNode* n0 = m_InnerNodes[0];
-	eNode* n1 = m_InnerNodes[1];
-
-	wire = m_Circuit->AddElement<eResistor>(1e-3);
-	r = m_Circuit->AddElement<eResistor>(5);
-	
-	wire->GetEpin(0)->ConnectToNode(n0);
-	eInductor::GetEpin(0)->ConnectToNode(n0);
-
-	r->GetEpin(1)->ConnectToNode(n1);
-	eInductor::GetEpin(1)->ConnectToNode(n1);
-
-	//d.GetAnodePin()->ConnectToNode(n1);
-	//d.GetCathodePin()->ConnectToNode(n0);
+	m_R[0].Stamp(mtx, GndNode, dt);
+	m_R[1].Stamp(mtx, GndNode, dt);
 }
 
-eCoilWithRectifier::~eCoilWithRectifier()
-{
-	m_Circuit->RemoveElement(r);
-	m_Circuit->RemoveElement(wire);
-	m_Circuit->RemoveNode(m_InnerNodes[0]);
-	m_Circuit->RemoveNode(m_InnerNodes[1]);
-}
-
-ePin* eCoilWithRectifier::GetEpin(int num)
-{
-	return num == 0 ? r->GetEpin(0) : wire->GetEpin(1);
-}
-
-
-#endif

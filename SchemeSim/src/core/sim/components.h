@@ -3,10 +3,11 @@
 #include <vector>
 #include <map>
 #include <set>
+#include <algorithm>
+#include <functional> 
 #define _USE_MATH_DEFINES
 #include <math.h>
 #include "matrix.h"
-
 
 
 class ePin;
@@ -19,6 +20,8 @@ class CircuitMtx;
 template<typename T>
 inline bool IsAlmostEqual(T a, T b, T epsilon = 1e-9) { return std::abs(a - b) < epsilon; }  
 
+template<typename T>
+inline bool IsInRange(T value, T min, T max) { return value >= min && value <= max; }
 
 class eNode
 {
@@ -36,12 +39,12 @@ public:
 
 	void	AddEpin(ePin* epin);
 	void	RemoveEpin(ePin* epin);
-	double	GetVoltage() const { return m_Voltage; }
-	void	SetVoltage(double Volt) { m_Voltage = IsAlmostEqual(Volt, 0.0) ? 0.0 : Volt; }
-	u64		GetIndex() const { return m_NodeIndex; }
-	u64		GetNumConnectedPins() const { return m_ePins.size(); }
-	void    SetIndex(u64 index) { m_NodeIndex = index; }
-	std::set<ePin*>& GetPins() { return m_ePins; }
+	double	GetVoltage() const					{ return m_Voltage; }
+	void	SetVoltage(double Volt)				{ m_Voltage = IsAlmostEqual(Volt, 0.0) ? 0.0 : Volt; }
+	u64		GetIndex() const					{ return m_NodeIndex; }
+	u64		GetNumConnectedPins() const			{ return m_ePins.size(); }
+	void    SetIndex(u64 index)					{ m_NodeIndex = index; }
+	auto&	GetPins()							{ return m_ePins; }
 	void	ReleaseAllPins();
 };
 
@@ -69,49 +72,50 @@ public:
 };
 
 
-enum ElementType_e : u8
-{
-	ty_Resistor,
-	ty_Capacitor,
-	ty_Inductor,
-	ty_VoltageSource,
-	ty_Diode,
-	ty_Potentiometer,
-	ty_RelayContact,
-	ty_Coil,
-	ty_Button,
-	ty_Transformer,
-	ty_DiodeBridge,
-	ty_Unknown = 255,
-};
+//enum ElementType_e : u8
+//{
+//	eTYPE_RESISTOR,
+//	eTYPE_CAPACITOR,
+//	eTYPE_INDUCTOR,
+//	eTYPE_VOLT_SOURCE,
+//	eTYPE_DIODE,
+//	eTYPE_POTENTIOMETER,
+//	eTYPE_RELAY_SWITCH,
+//	eTYPE_COIL,
+//	eTYPE_BUTTON,
+//	eTYPE_TRANSFORMER,
+//	eTYPE_DIODE_BRIDGE,
+//	
+//	eTYPE_UNKNOWN = 255,
+//};
 
 
 class eElement
 {
 protected:
 
-	std::vector<ePin> m_ePins;
+	std::vector<ePin>		m_ePins;
 
-	virtual void SetNumEpins(int n) final;
-	void SetEpin(int num, ePin pin);
+	virtual void			SetNumEpins(int n) final;
+	void					SetEpin(int num, ePin pin);
 
 public:
 
 	eElement() = default;
 	virtual ~eElement();
 
-	virtual void Stamp(CircuitMtx& mtx, eNode* GndNode, double dt) { }
-	virtual void Update(CircuitMtx& mtx, double dt) { }					// Called after matrix was solved
-	virtual void InitMatrix(CircuitMtx& mtx) { }						// Called before matrix is assembled
-	virtual void Reset() { }
-	virtual ePin* GetEpin(int num);
-	virtual u64 GetNumEpins()					{ return m_ePins.size(); }
-	virtual ElementType_e GetType()				{ return ty_Unknown; }
-	virtual double GetCurrent()					{ return 0.0; }
-	virtual double GetVoltDrop()				{ return 0.0; }
+	virtual void			Stamp(CircuitMtx& mtx, eNode* GndNode, double dt) { }
+	virtual void			Update(CircuitMtx& mtx, double dt)	{ }		// Called after matrix was solved
+	virtual void			InitMatrix(CircuitMtx& mtx)			{ }		// Called before matrix is assembled
+	virtual void			Reset()								{ }
 
-	const char* GetTypeName();
-	void ReleaseConnectedNodes();
+	virtual ePin*			GetEpin(int num);
+	//virtual ElementType_e	GetType()							{ return eTYPE_UNKNOWN; }
+	virtual double			GetCurrent()						{ return 0.0; }
+	virtual double			GetVoltDrop()						{ return 0.0; }
+	virtual void			ReleaseConnectedNodes();
+
+	//const char* GetTypeName();
 };
 
 
@@ -121,6 +125,7 @@ public:
 class eResistor : public eElement
 {
 	friend class Resistor;
+	friend class NeutralRelayCoilWithRectifier;
 
 	double m_Resistance;
 
@@ -128,7 +133,6 @@ public:
 
 	eResistor(double resistance);
 	virtual void Stamp(CircuitMtx& mtx, eNode* GndNode, double dt) override;
-	virtual ElementType_e GetType() override { return ty_Resistor; }
 	virtual double GetCurrent() override;
 	virtual double GetVoltDrop() override;
 
@@ -159,8 +163,6 @@ public:
 	~ePotentiometer();
 	virtual void Stamp(CircuitMtx& mtx, eNode* GndNode, double dt) override;
 	virtual ePin* GetEpin(int num) override;
-	virtual ElementType_e GetType() override { return ty_Potentiometer; }
-	virtual u64 GetNumEpins() override { return 3; }
 
 	void		SetSliderPosition(double position);
 	double		GetSliderPosition() const;
@@ -195,9 +197,7 @@ public:
 	virtual void Stamp(CircuitMtx& mtx, eNode* GndNode, double dt) override;
 	virtual void Update(CircuitMtx& mtx, double dt) override;
 	virtual void InitMatrix(CircuitMtx& mtx) override;
-	virtual ElementType_e GetType() override { return ty_VoltageSource; }
 	virtual void Reset() override { m_Time = 0.0; }
-	virtual u64 GetNumEpins() override { return 2; }
 	virtual double GetCurrent() override;
 	virtual double GetVoltDrop() override;
 
@@ -218,7 +218,6 @@ public:
 	eCapacitor(double capacitance);
 	virtual void Stamp(CircuitMtx& mtx, eNode* GndNode, double dt) override;
 	virtual void Update(CircuitMtx& mtx, double dt) override;
-	virtual ElementType_e GetType() override { return ty_Capacitor; }
 	virtual void Reset() override;
 	virtual double GetCurrent() override;
 	virtual double GetVoltDrop() override;
@@ -261,7 +260,9 @@ public:
 
 class eDiode : public eElement
 {
-	
+	friend class Diode;
+	friend class NeutralRelayCoilWithRectifier;
+
 	double m_Vt;		// Thermal voltage (~0.025V at 27 C (300.15 K))
 	double m_Is;		// Saturation current (should be really small value)
 	double m_ZVoltage;	// Zener breakdown voltage (0 if not used)
@@ -285,7 +286,6 @@ public:
 	
 	virtual void Stamp(CircuitMtx& mtx, eNode* GndNode, double dt) override;
 	virtual void Update(CircuitMtx& mtx, double dt) override;
-	virtual ElementType_e GetType() override { return ty_Diode; }
 	
 	double GetVoltDrop();
 	ePin* GetAnodePin()		{ return &m_ePins[0]; }
@@ -308,6 +308,8 @@ class eDiode : public eElement
 
 class eDiodeBridge : public eElement
 {
+	friend NeutralRelayCoilWithRectifier;
+
 	//       in0 ----(wire0)-----
 	//                   d0     |   d1
 	//                -----|>|--n0--|>|------
@@ -334,12 +336,9 @@ public:
 		OutPlus = 3,
 	};
 
-
 	eDiodeBridge(Circuit& circuit);
 	~eDiodeBridge();
 	virtual void Stamp(CircuitMtx& mtx, eNode* GndNode, double dt) override;
-	virtual ElementType_e GetType() override { return ty_DiodeBridge; }
-	virtual u64 GetNumEpins() override { return 4; }
 	virtual void Update(CircuitMtx& mtx, double dt) override;
 	virtual void Reset() override;
 	virtual ePin* GetEpin(int num);
@@ -356,9 +355,12 @@ class eInductor : public eElement
 protected:
 
 	friend class Inductor;
+	friend class Coil;
+	friend class NeutralRelayCoilWithRectifier;
 
 	double m_Inductance;			// L, H
 	double m_prevCurrent = 0.0;
+	double m_R = 1.0;
 
 	u64 m_CurrenIndex = 0;
 
@@ -369,7 +371,6 @@ public:
 	virtual void Stamp(CircuitMtx& mtx, eNode* GndNode, double dt) override;
 	virtual void Update(CircuitMtx& mtx, double dt) override;
 	virtual void InitMatrix(CircuitMtx& mtx) override;
-	virtual ElementType_e GetType() override { return ty_Inductor; }
 
 	double GetInductance() { return m_Inductance; }
 	void SetInductance(double inductance) { m_Inductance = inductance; }
@@ -391,19 +392,19 @@ public:
 
 protected:
 
-	static inline const double maxResistance = 1e9;
-	static inline const double minResistance = 1e-6;
+	static inline const double maxResistance = 1e12;
+	static inline const double minResistance = 1e-12;
 
 	// --(r11)----(r12)---
 	//         |
-	//         |-(r13)--
+	// -(r13)--|
 	//   
 
 	//     11     12
 	// -----______-------
 	//      
-	//           |_______
-	//             13
+	// _____|
+	//     13
 
 	std::string		m_CoilName;
 	u64				m_HashName = 0;
@@ -415,6 +416,7 @@ protected:
 	State			m_State;
 	Circuit*		m_Circuit;
 
+
 public:
 
 	eRelayContactsGroup(Circuit& circuit);
@@ -422,8 +424,6 @@ public:
 
 	virtual void			Stamp(CircuitMtx& mtx, eNode* GndNode, double dt) override;
 	virtual ePin*			GetEpin(int num) override;
-	virtual ElementType_e	GetType() override										{ return ty_RelayContact; }
-	virtual u64				GetNumEpins() override									{ return 3; }
 
 	void					SetState(State state);
 	State					GetState();
@@ -433,86 +433,71 @@ public:
 };
 
 
-class eCoil : public eInductor
+class eCoil : public eElement
 {
 	friend class Coil;
 	friend class NeutralRelayCoilWithRectifier;
 	friend class eCoilWithRectifier;
 
-	std::string m_Name;
-	u64		m_HashName = 0;
-	double	m_ReleaseDelay; // in seconds
-	double  m_CurrThreshold = 0.015;
-	double  m_InactiveCoilTimer = 0.0;
-	bool	m_IsActive = false;
+	std::string		m_Name;
+	u64				m_HashName = 0;
+	double			m_ReleaseDelay; // in seconds
+	double			m_CurrThreshold = 0.015;
+	double			m_InactiveCoilTimer = 0.0;
+	bool			m_IsActive = false;
+
+protected:
+	eInductor		m_l;
 
 public:
 
 	eCoil(double Inductance, double ReleaseDelay = 0.0);
-	virtual void Update(CircuitMtx& mtx, double dt) override;
-	virtual ElementType_e GetType() override { return ty_Coil; }
 	
-	bool IsActive() { return m_IsActive; }
-	void SetName(const std::string& name);
-	const std::string& GetName() { return m_Name; }
-	u64	GetHashName() { return m_HashName; }
+	virtual void			Stamp(CircuitMtx& mtx, eNode* GndNode, double dt);
+	virtual void			Update(CircuitMtx& mtx, double dt) override;
+	virtual void			InitMatrix(CircuitMtx& mtx) override;
+	virtual void			Reset() override;
+	
+	virtual ePin*			GetEpin(int num) override;
+	virtual double			GetCurrent() override							{ return m_l.GetCurrent(); }
+	virtual double			GetVoltDrop() override							{ return m_l.GetVoltDrop(); }
+	
+	bool					IsActive()										{ return m_IsActive; }
+	void					SetName(const std::string& name);
+	const std::string&		GetName()										{ return m_Name; }
+	u64						GetHashName()									{ return m_HashName; }
 };
 
-#define vComposeCoil 1
 
-#if vComposeCoil
-class eCoilWithRectifier : public eElement
+class eCoilWithRectifier : public eCoil
 {
 	friend class NeutralRelayCoilWithRectifier;
-	eCoil* l;
-	eDiode d;
-	eResistor r;
-	eResistor wire;
-	eNode* m_InnerNodes[2];
+	
+	eDiodeBridge m_db;
+	eResistor m_r;
+	eNode* m_Nodes[3];
 	Circuit* m_Circuit;
 
 public:
 
 	eCoilWithRectifier(Circuit& circ, double Inductance, double ReleaseDelay = 0.0);
 	~eCoilWithRectifier();
-
-	virtual ElementType_e GetType() override { return ty_Coil; }
-
+	virtual ePin* GetEpin(int num) override;
 	virtual void Stamp(CircuitMtx& mtx, eNode* GndNode, double dt) override;
 	virtual void Update(CircuitMtx& mtx, double dt) override;
-	virtual void InitMatrix(CircuitMtx& mtx) override;
-	virtual void Reset() override;
-	virtual ePin* GetEpin(int num) override;
-	virtual double GetCurrent() override;
-	virtual double GetVoltDrop() override;
+	virtual void Reset() override { m_InactiveCoilTimer = 0.0; m_IsActive = false; }
 };
-#else
 
-class eCoilWithRectifier : public eInductor
-{
-	friend class NeutralRelayCoilWithRectifier;
-	//eDiode d;
-	eResistor* r;
-	eResistor* wire;
-	eNode* m_InnerNodes[2];
-	Circuit* m_Circuit;
-
-public:
-
-	eCoilWithRectifier(Circuit& circ, double Inductance, double ReleaseDelay = 0.0);
-	~eCoilWithRectifier();
-
-	virtual ElementType_e GetType() override { return ty_Coil; }
-	virtual ePin* GetEpin(int num) override;
-};
-#endif
 
 class eTransformer : public eElement
 {
 	friend class Transformer;
+	friend class TransformerWithMiddlePin;
 
 	double m_L1;
 	double m_L2;
+	double m_R1 = 1.0;
+	double m_R2 = 1.0;
 	double m_CouplCoef;
 	double m_I1 = 0.0;
 	double m_I2 = 0.0;
@@ -522,21 +507,91 @@ class eTransformer : public eElement
 
 public:
 
-	eTransformer(double Inductance1, double ratio);
-	eTransformer(double Inductance1, double Inductance2, double transformCoef);
+	eTransformer(double L1, double ratio);
+	eTransformer(double L1, double L2, double transformCoef);
 	virtual void InitMatrix(CircuitMtx& mtx) override;
 	virtual void Stamp(CircuitMtx& mtx, eNode* GndNode, double dt) override;
 	virtual void Update(CircuitMtx& mtx, double dt) override;
-
-	virtual ElementType_e GetType() override { return ty_Transformer; }
-	virtual u64 GetNumEpins() override { return 4; }
 
 	ePin* GetPrimaryPin1()		{ return &m_ePins[0]; }
 	ePin* GetPrimaryPin2()		{ return &m_ePins[1]; }
 	ePin* GetSecondaryPin1()	{ return &m_ePins[2]; }
 	ePin* GetSecondaryPin2()	{ return &m_ePins[3]; }
 
+	double GetRatio() const;
+	void SetRatio(double ratio);
+	double GetInductance1() const;
+	double GetInductance2() const;
+	void SetInductance1(double inductance);
+	void SetInductance2(double inductance);
+	
 	virtual void Reset() override { m_I1 = 0.0; m_I2 = 0.0; }
+};
+
+
+class eTransformerWithMiddlePin : public eElement
+{
+	eTransformer m_T[2];
+	eNode* m_Nodes[2];
+	eResistor m_Wire;
+
+	friend class TransformerWithMiddlePin;
+
+public:
+	eTransformerWithMiddlePin(Circuit& circ, double L1, double L2);
+	virtual void InitMatrix(CircuitMtx& mtx) override;
+	virtual void Stamp(CircuitMtx& mtx, eNode* GndNode, double dt) override;
+	virtual void Update(CircuitMtx& mtx, double dt) override;
+	virtual void Reset() override;
+	virtual ePin* GetEpin(int num) override;
+};
+
+
+class eKPTSH : public eElement
+{
+	friend class KPTSH;
+
+public:
+	enum KPTSH_TYPE {
+		_5 = 5, 
+		_7 = 7, 
+	};
+
+private:
+
+	static constexpr double KPTSH_5_DURATION = 1.6;
+	static constexpr double KPTSH_7_DURATION = 1.86;
+
+	eRelayContactsGroup m_Z;
+	eRelayContactsGroup m_J;
+	eRelayContactsGroup m_KJ;
+	eResistor m_R;
+	KPTSH_TYPE m_Type;
+	double m_Timer = 0.0;
+
+public:
+
+	eKPTSH(Circuit& circ, int type);
+	~eKPTSH();
+
+	virtual ePin* GetEpin(int num) override;
+	virtual void Stamp(CircuitMtx& mtx, eNode* GndNode, double dt) override;
+	virtual void Update(CircuitMtx& mtx, double dt) override;
+	virtual void Reset() override { m_Timer = 0.0; }
+	int GetType() const { return m_Type; }
+	void SetType(int type);
+};
+
+
+class eZBF : public eElement
+{
+	eResistor m_R[2];
+public:
+
+	eZBF();
+	~eZBF();
+	virtual ePin* GetEpin(int num) override;
+	virtual void Stamp(CircuitMtx& mtx, eNode* GndNode, double dt) override;
 };
 
 
@@ -571,16 +626,12 @@ public:
 	eButton(NormalState state);
 
 	virtual ePin* GetEpin(int num) override;
-	virtual ElementType_e GetType() override { return ty_Button; }
 	virtual void Stamp(CircuitMtx& mtx, eNode* GndNode, double dt) override;
-	virtual void Update(CircuitMtx& mtx, double dt) override;
 
 	void SetNormalState(NormalState state);
 	void Press()	{ SetState(Pressed); }
 	void Release()	{ SetState(Released); }
 };
-
-
 
 
 

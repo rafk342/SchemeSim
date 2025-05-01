@@ -15,7 +15,8 @@ class SFMLRenderer
     float                       m_frameTime = 0;
     float                       m_fps = 0;
     sf::Vector2f                m_DeltaMouse;
-    
+    float                       m_ZoomScale = 1.0f;
+
     SFMLRenderer() = default;
     void HandleEvents();
 

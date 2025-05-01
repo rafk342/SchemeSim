@@ -17,7 +17,6 @@
 #include "common/vfmt.h"
 #include "core/DrawList.h"
 #include "helpers/Helpers.h"
-#pragma warning(disable: 2397)
 
 
 class Circuit
@@ -57,7 +56,7 @@ public:
 	void									RebuildMatrix();
 	eNode*									LookupGroundNode();
 	void									AdjustVoltages(eNode* ToDesiredGround);
-	void									Solve();
+	void									Solve(bool decompose = true);
 	void									FinalizeMatrixSize();
 	void									CleanupFromNodes();
 	eNode*									MergeNodes(eNode* node1, eNode* node2);
@@ -111,14 +110,14 @@ class Simulation
 
 public:
 
-	static void		Init(Circuit* circuit)								{ sm_Circuit = circuit; }
-	static void		Shutdown()											{ sm_Circuit = nullptr; }
-	static void		Simulate(double frameTime, const double step = 0.00005);
+	static void		Init(Circuit* circuit)										{ sm_Circuit = circuit; }
+	static void		Shutdown()													{ }
+	static void		Simulate(double frameTime, const double step = 0.0005);
 	static void		UpdateOscilloscopes(double t);
-	static SimState	GetState() 											{ return sm_SimState; }
-	static void		SetState(SimState state)							{ sm_SimState = state; }
-	static double&	CircTime() 											{ return sm_CircTime; }
-	static float&	SimSpeed() 											{ return sm_SimSpeed; }
+	static SimState	GetState() 													{ return sm_SimState; }
+	static void		SetState(SimState state)									{ sm_SimState = state; }
+	static double&	CircTime() 													{ return sm_CircTime; }
+	static float&	SimSpeed() 													{ return sm_SimSpeed; }
 	
 	static void		RegisterOscilloscope(eElement* element, std::shared_ptr<Oscilloscope> oscilloscope);
 	static std::shared_ptr<Oscilloscope> GetOscilloscope(eElement* element);

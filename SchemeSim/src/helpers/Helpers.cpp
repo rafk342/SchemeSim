@@ -1,4 +1,5 @@
 #include "Helpers.h"
+#include <shobjidl.h>
 
 void Utils::InvertColors(sf::Image& image)
 {
@@ -115,3 +116,122 @@ void Utils::printStackTrace()
         std::cout << buffer;
     }
 }
+
+std::filesystem::path Utils::OpenFileSelectionDialog()
+{
+    std::filesystem::path filePath;
+    HRESULT hr = CoInitializeEx(nullptr, COINIT_APARTMENTTHREADED | COINIT_DISABLE_OLE1DDE);
+    if (SUCCEEDED(hr))
+    {
+        IFileOpenDialog* pFileOpen = nullptr;
+        hr = CoCreateInstance(CLSID_FileOpenDialog, nullptr, CLSCTX_ALL, IID_IFileOpenDialog, reinterpret_cast<void**>(&pFileOpen));
+
+        if (SUCCEEDED(hr))
+        {
+            hr = pFileOpen->Show(nullptr);
+
+            if (SUCCEEDED(hr))
+            {
+                IShellItem* pItem = nullptr;
+                hr = pFileOpen->GetResult(&pItem);
+
+                if (SUCCEEDED(hr))
+                {
+                    PWSTR pszFilePath = nullptr;
+                    hr = pItem->GetDisplayName(SIGDN_FILESYSPATH, &pszFilePath);
+
+                    if (SUCCEEDED(hr))
+                    {
+                        filePath = std::filesystem::path(pszFilePath);
+                        CoTaskMemFree(pszFilePath);
+                    }
+                    pItem->Release();
+                }
+            }
+            pFileOpen->Release();
+        }
+        CoUninitialize();
+    }
+    return filePath;
+}
+
+
+std::filesystem::path Utils::OpenFolderSelectionDialog()
+{
+    std::filesystem::path folderPath;
+    HRESULT hr = CoInitializeEx(nullptr, COINIT_APARTMENTTHREADED | COINIT_DISABLE_OLE1DDE);
+    if (SUCCEEDED(hr))
+    {
+        IFileDialog* pFolderDialog = nullptr;
+        hr = CoCreateInstance(CLSID_FileOpenDialog, nullptr, CLSCTX_ALL, IID_IFileDialog, reinterpret_cast<void**>(&pFolderDialog));
+
+        if (SUCCEEDED(hr))
+        {
+            DWORD options;
+            hr = pFolderDialog->GetOptions(&options);
+            if (SUCCEEDED(hr))
+            {
+                hr = pFolderDialog->SetOptions(options | FOS_PICKFOLDERS);
+            }
+
+            hr = pFolderDialog->Show(nullptr);
+
+            if (SUCCEEDED(hr))
+            {
+                IShellItem* pItem = nullptr;
+                hr = pFolderDialog->GetResult(&pItem);
+
+                if (SUCCEEDED(hr))
+                {
+                    PWSTR pszFolderPath = nullptr;
+                    hr = pItem->GetDisplayName(SIGDN_FILESYSPATH, &pszFolderPath);
+
+                    if (SUCCEEDED(hr))
+                    {
+                        folderPath = std::filesystem::path(pszFolderPath);
+                        CoTaskMemFree(pszFolderPath);
+                    }
+                    pItem->Release();
+                }
+            }
+            pFolderDialog->Release();
+        }
+        CoUninitialize();
+    }
+    return folderPath;
+}
+
+size_t Utils::GenerateRandomNum(size_t min, size_t max)
+{
+    static std::mt19937 rng;
+    rng.seed(std::random_device()());
+    std::uniform_int_distribution<std::mt19937::result_type> dist6(min, max);
+    return dist6(rng);
+}
+
+bool Utils::ÑpyTextToClipboard(const std::string& text)
+{
+    if (!OpenClipboard(NULL))
+        return false;
+
+    EmptyClipboard();
+
+    HGLOBAL hGlobal = GlobalAlloc(0x0002, text.size() + 1);
+    ON_SCOPE_EXIT([&] {
+        if (hGlobal)
+            GlobalFree(hGlobal);
+        CloseClipboard();
+        });
+
+    if (!hGlobal)
+        return false;
+
+    memcpy(GlobalLock(hGlobal), text.c_str(), text.size() + 1);
+    GlobalUnlock(hGlobal);
+
+    SetClipboardData(1, hGlobal);
+    return true;
+}
+
+
+

@@ -6,15 +6,24 @@ WidgetBase::WidgetBase(const std::string& path)
 {
 	if (path.empty())
 		return;
-    loadImageFromFile(path);
+
+	loadImageFromFile(path);
 }
 
 void WidgetBase::loadImageFromFile(const std::string& path)
 {
-    SM_ASSERT(m_texture.loadFromFile(path), std::format("::WidgetBase() Couldn't load image from the given path : {}", path));
-    if (!m_texture.generateMipmap())
-		std::cout << "Failed to generate mipmaps to texture: " << path << '\n';
-    m_sprite.setTexture(m_texture, true);
+	static std::unordered_map<std::string, sf::Texture> loadedTextures;
+	if (loadedTextures.contains(path))
+	{
+		m_sprite.setTexture(loadedTextures.at(path));
+	}
+	else
+	{
+		SM_ASSERT(m_texture.loadFromFile(path), std::format("WidgetBase::loadImageFromFile() Couldn't load image from the given path : {}", path));
+		if (!m_texture.generateMipmap())
+			std::cout << "Failed to generate mipmaps to texture: " << path << '\n';
+		m_sprite.setTexture(m_texture, true);
+	}
 }
 
 bool WidgetBase::IsHovered()

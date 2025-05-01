@@ -28,8 +28,15 @@ namespace _asserts
         if (!expr)
         {
             Utils::printStackTrace();
-            winapi::MessageBoxA(nullptr, std::format("Assertion Failed: {} \nfile : {}\nline : {}\n", description, loc.file_name, loc.line_number).c_str(), "Assert", MB_ICONERROR | MB_OK);
-            __debugbreak();
+            int r = winapi::MessageBoxA(nullptr, std::format("Assertion Failed: {} \nfile : {}\nline : {}\n", description, loc.file_name, loc.line_number).c_str(), "Assert", MB_ICONWARNING | MB_OKCANCEL);
+			if (r == IDOK)
+			{ 
+            
+            }
+			else
+			{
+                __debugbreak();
+			}
         }
     }
 }

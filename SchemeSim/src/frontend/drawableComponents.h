@@ -16,7 +16,7 @@ class ConnectionDot;
 class Wire;
 
 
-inline void drawText(const auto& text, float x, float y, int charSize, sf::Color color = sf::Color::Black)
+__forceinline void drawText(const auto& text, float x, float y, int charSize, sf::Color color = sf::Color::Black)
 {
 	sf::Text t(gSFMLRenderer.GetFont(), text, charSize);
 	t.setFillColor(color);
@@ -25,7 +25,7 @@ inline void drawText(const auto& text, float x, float y, int charSize, sf::Color
 	dlDrawList::getWindow()->draw(t);
 };
 
-inline void DrawCircle(sf::Vector2f position, float radius, sf::Color color = sf::Color::Black)
+__forceinline void DrawCircle(sf::Vector2f position, float radius, sf::Color color = sf::Color::Black)
 {
 	sf::CircleShape circle(radius);
 	circle.setFillColor(color);
@@ -34,12 +34,12 @@ inline void DrawCircle(sf::Vector2f position, float radius, sf::Color color = sf
 	dlDrawList::getWindow()->draw(circle);
 }
 
-inline sf::Color lerpColor(sf::Color color1, sf::Color color2, float t)
+__forceinline sf::Color lerpColor(sf::Color color1, sf::Color color2, float t)
 {
 	return sf::Color(std::lerp(color1.r, color2.r, t),
-		std::lerp(color1.g, color2.g, t),
-		std::lerp(color1.b, color2.b, t),
-		std::lerp(color1.a, color2.a, t));
+					 std::lerp(color1.g, color2.g, t),
+					 std::lerp(color1.b, color2.b, t),
+					 std::lerp(color1.a, color2.a, t));
 }
 
 
@@ -51,14 +51,19 @@ enum DrawableType
 	DRAWABLE_INDUCTOR,
 	DRAWABLE_DIODE,
 	DRAWABLE_RELAY_CONTACT_GROUP,
-	DRAWABLE_RELAY_COIL,
+	DRAWABLE_RELAY_COIL_NEUTRAL,
+	DRAWABLE_RELAY_COIL_NEUTRAL_THIRD_RELYABILITY_CLASS,
+	DRAWABLE_RELAY_COIL_NEUTRAL_WITH_SWITCH_OFF_DELAY,
+	DRAWABLE_RELAY_COIL_NEUTRAL_WITH_SWITCH_OFF_DELAY_THIRD_RELYABILITY_CLASS,
+	DRAWABLE_RELAY_COIL_NEUTRAL_WITH_RECTIFIER,
 	DRAWABLE_DIODE_BRIDGE,
 	DRAWABLE_TRANSFORMER,
-	
+	DRAWABLE_TRANSFORMER_WITH_MIDDLE_PIN,
+	DRAWABLE_KPTSH,
+	DRAWABLE_ZBF,
 	
 	DRAWABLE_UNKNOWN = -1,
 };
-
 
 enum class flipAxis { X, Y };
 
@@ -70,6 +75,7 @@ protected:
 	sf::Angle m_Rotation{};
 	bool m_IsFlipped_X = false;
 	bool m_IsFlipped_Y = false;
+	bool m_Hide = false;
 
 public:
 
@@ -91,18 +97,32 @@ public:
 	//bool							IsWire()													{ return dynamic_cast<Wire*>(this) != nullptr; }
 	virtual bool					IsWire() const												{ return false; }
 	virtual DrawableType 			GetType() const = 0;
-	virtual std::string				Parser_WriteElementData(eElement* )							{ return ""; }
+	virtual std::string				Parser_WriteElementData(eElement*)							{ return ""; }
 	virtual void					Parser_ReadElementData(eElement*, const std::string&)		{ }
 	virtual void					Update(DrawableCircuit&, eElement*)							{ }
 	std::shared_ptr<eDrawableBase>	GetSharedInstance()											{ return shared_from_this(); }
 	virtual bool					CanHaveOscilloscope() const = 0;
+	virtual const char*				GetTypeName() const = 0;
 
 	bool IsFlippedOverX() const { return m_IsFlipped_X; }
 	bool IsFlippedOverY() const { return m_IsFlipped_Y; }
+	bool& Hide() { return m_Hide; }
 
 	template <typename T> T* As() { return /*dynamic_cast*/static_cast<T*>(this); }
-};
+	
+	__forceinline bool IsCoil()
+	{
+		DrawableType coilTypes[] = {
+			DRAWABLE_RELAY_COIL_NEUTRAL,
+			DRAWABLE_RELAY_COIL_NEUTRAL_THIRD_RELYABILITY_CLASS,
+			DRAWABLE_RELAY_COIL_NEUTRAL_WITH_SWITCH_OFF_DELAY,
+			DRAWABLE_RELAY_COIL_NEUTRAL_WITH_SWITCH_OFF_DELAY_THIRD_RELYABILITY_CLASS,
+			DRAWABLE_RELAY_COIL_NEUTRAL_WITH_RECTIFIER,
+		};
 
+		return std::ranges::find(coilTypes, GetType()) != std::end(coilTypes);
+	}
+};
 
 
 class Resistor : public eDrawableBase
@@ -117,7 +137,9 @@ public:
 	virtual std::string				Parser_WriteElementData(eElement* elem) override;
 	virtual void					Parser_ReadElementData(eElement* elem, const std::string& data) override;
 	virtual bool					CanHaveOscilloscope() const override { return true; }
+	virtual const char*				GetTypeName() const override { return "Resistor"; }
 };
+
 
 class Battery : public eDrawableBase
 {
@@ -131,7 +153,9 @@ public:
 	virtual std::string				Parser_WriteElementData(eElement* elem) override;
 	virtual void					Parser_ReadElementData(eElement* elem, const std::string& data) override;
 	virtual bool					CanHaveOscilloscope() const override { return true; }
+	virtual const char*				GetTypeName() const override { return "Battery"; }
 }; 
+
 
 class Capacitor : public eDrawableBase
 {
@@ -145,7 +169,9 @@ public:
 	virtual std::string				Parser_WriteElementData(eElement* elem) override;
 	virtual void					Parser_ReadElementData(eElement* elem, const std::string& data) override;
 	virtual bool					CanHaveOscilloscope() const override { return true; }
+	virtual const char*				GetTypeName() const override { return "Capacitor"; }
 };
+
 
 class Inductor : public eDrawableBase
 {
@@ -159,7 +185,9 @@ public:
 	virtual std::string				Parser_WriteElementData(eElement* elem) override;
 	virtual void					Parser_ReadElementData(eElement* elem, const std::string& data) override;
 	virtual bool					CanHaveOscilloscope() const override { return true; }
+	virtual const char*				GetTypeName() const override { return "Inductor"; }
 };
+
 
 class Diode : public eDrawableBase
 {
@@ -173,7 +201,9 @@ public:
 	virtual std::string				Parser_WriteElementData(eElement* elem) override;
 	virtual void					Parser_ReadElementData(eElement* elem, const std::string& data) override;
 	virtual bool					CanHaveOscilloscope() const override { return true; }
+	virtual const char*				GetTypeName() const override { return "Diode"; }
 };
+
 
 class Transformer : public eDrawableBase
 {
@@ -187,14 +217,34 @@ public:
 	virtual std::string				Parser_WriteElementData(eElement* elem) override;
 	virtual void					Parser_ReadElementData(eElement* elem, const std::string& data) override;
 	virtual bool					CanHaveOscilloscope() const override { return false; }
+	virtual const char*				GetTypeName() const override { return "Transformer"; }
 };
+
+
+class TransformerWithMiddlePin : public eDrawableBase
+{
+public:
+	using SimTy = eTransformerWithMiddlePin;
+	TransformerWithMiddlePin();
+	virtual void					Draw() override;
+	virtual void					UIParams(eElement* elem) override;
+	virtual DrawableType			GetType() const override { return DrawableType::DRAWABLE_TRANSFORMER_WITH_MIDDLE_PIN; }
+	virtual std::string				Parser_WriteElementData(eElement* elem) override;
+	virtual void					Parser_ReadElementData(eElement* elem, const std::string& data) override;
+	virtual bool					CanHaveOscilloscope() const override { return false; }
+	virtual const char*				GetTypeName() const override { return "Transformer with Middle Tap"; }
+};
+
 
 class RelayContactsGroup : public eDrawableBase
 {
+	enum NormalState { NormalOpen, NormalClosed, };
+
 	sf::Sprite m_BaseSprite;
-	sf::Sprite m_ButtonSprite;
+	sf::Sprite m_SwitchSprite;
 	sf::Vector2f m_SwitchPos;
 
+	eRelayContactsGroup::State m_NormalState = eRelayContactsGroup::State::n11_n12;
 	eRelayContactsGroup::State m_stateToDraw = eRelayContactsGroup::State::n11_n12;
 	std::weak_ptr<eDrawableBase> m_Coil;
 
@@ -207,8 +257,6 @@ public:
 	virtual void					Draw() override;
 	virtual void					UIParams(eElement* elem) override;
 	virtual DrawableType			GetType() const override { return DrawableType::DRAWABLE_RELAY_CONTACT_GROUP; }
-	virtual std::string				Parser_WriteElementData(eElement* elem) override;
-	virtual void					Parser_ReadElementData(eElement* elem, const std::string& data) override;
 	virtual bool					IsHovered() override;
 	virtual void					SetPosition(sf::Vector2f pos) override;
 	virtual sf::Vector2f			GetPosition() override;
@@ -216,26 +264,23 @@ public:
 	virtual void					SetRotation(float degrees) override;
 	virtual void					Flip(flipAxis axis) override;
 	virtual bool					CanHaveOscilloscope() const override { return false; }
+	virtual const char*				GetTypeName() const override { return "Relay Contacts Group"; }
+
+	virtual std::string				Parser_WriteElementData(eElement* elem) override;
+	virtual void					Parser_ReadElementData(eElement* elem, const std::string& data) override;
 
 	bool							LookupCoil(eRelayContactsGroup* my_eContact, DrawableCircuit& circ);
-
+	void 							SetStateToDraw(eRelayContactsGroup::State state) { m_stateToDraw = state; }
 };
+
 
 class Coil : public eDrawableBase
 {
 protected:
 	char m_UiBuff[0x80]{};
+
 public:
 	using SimTy = eCoil;
-	enum CoilType
-	{
-		NEUTRAL,
-		NEUTRAL_THIRD_RELYABILITY_CLASS,
-		NEUTRAL_WITH_SWITCH_OFF_DELAY,
-		NEUTRAL_WITH_SWITCH_OFF_DELAY_THIRD_RELYABILITY_CLASS,
-		NEUTRAL_WITH_RECTIFIER,
-		NEUTRAL_WITH_RECTIFIER_HIRD_RELYABILITY_CLASS,
-	};
 
 	Coil(const std::string& path);
 
@@ -245,9 +290,7 @@ public:
 	virtual void					Parser_ReadElementData(eElement* elem, const std::string& data) override;
 	virtual void					Update(DrawableCircuit& circ, eElement* elem) override;
 	virtual bool					CanHaveOscilloscope() const override { return true; }
-	virtual DrawableType			GetType() const override { return DrawableType::DRAWABLE_RELAY_COIL; }
-
-	virtual CoilType				GetCoilType() const = 0;
+	virtual const char*				GetTypeName() const override { return "Coil"; }
 };
 
 
@@ -255,7 +298,8 @@ class NeutralRelayCoil : public Coil
 {
 public:
 	NeutralRelayCoil();
-	virtual CoilType GetCoilType() const override { return CoilType::NEUTRAL; }
+	virtual DrawableType GetType() const override { return DrawableType::DRAWABLE_RELAY_COIL_NEUTRAL; }
+	virtual const char* GetTypeName() const override { return "Neutral Relay Coil"; }
 };
 
 
@@ -263,7 +307,8 @@ class NeutralRelayCoilWithSwitchOffDelay : public Coil
 {
 public:
 	NeutralRelayCoilWithSwitchOffDelay();
-	virtual CoilType GetCoilType() const override { return CoilType::NEUTRAL_WITH_SWITCH_OFF_DELAY; }
+	virtual DrawableType GetType() const override { return DrawableType::DRAWABLE_RELAY_COIL_NEUTRAL_WITH_SWITCH_OFF_DELAY; }
+	virtual const char* GetTypeName() const override { return "Neutral Relay Coil with Switch Off Delay"; }
 };
 
 
@@ -271,7 +316,8 @@ class NeutralRelayCoil3RelyabilityClass : public Coil
 {
 public:
 	NeutralRelayCoil3RelyabilityClass();
-	virtual CoilType GetCoilType() const override { return CoilType::NEUTRAL_THIRD_RELYABILITY_CLASS; }
+	virtual DrawableType GetType() const override { return DrawableType::DRAWABLE_RELAY_COIL_NEUTRAL_THIRD_RELYABILITY_CLASS; }
+	virtual const char* GetTypeName() const override { return "Neutral Relay Coil 3rd Relyability Class"; }
 };
 
 
@@ -279,7 +325,8 @@ class NeutralRelayCoilWithSwitchOffDelay3RelyabilityClass : public Coil
 {
 public:
 	NeutralRelayCoilWithSwitchOffDelay3RelyabilityClass();
-	virtual CoilType GetCoilType() const override { return CoilType::NEUTRAL_WITH_SWITCH_OFF_DELAY_THIRD_RELYABILITY_CLASS; }
+	virtual DrawableType GetType() const override { return DrawableType::DRAWABLE_RELAY_COIL_NEUTRAL_WITH_SWITCH_OFF_DELAY_THIRD_RELYABILITY_CLASS; }
+	virtual const char* GetTypeName() const override { return "Neutral Relay Coil with Switch Off Delay 3rd Relyability Class"; }
 };
 
 
@@ -290,8 +337,12 @@ public:
 	using SimTy = eCoilWithRectifier;
 
 	NeutralRelayCoilWithRectifier();
-	virtual CoilType GetCoilType() const override { return CoilType::NEUTRAL_WITH_RECTIFIER; }
-	virtual void UIParams(eElement* elem) override;
+
+	virtual void					UIParams(eElement* elem) override;
+	virtual DrawableType			GetType() const override { return DrawableType::DRAWABLE_RELAY_COIL_NEUTRAL_WITH_RECTIFIER; }
+	virtual std::string				Parser_WriteElementData(eElement* elem) override;
+	virtual void					Parser_ReadElementData(eElement* elem, const std::string& data) override;
+	virtual const char*				GetTypeName() const override { return "Neutral Relay Coil with Rectifier"; }
 };
 
 
@@ -304,6 +355,40 @@ public:
 	virtual DrawableType			GetType() const override { return DrawableType::DRAWABLE_DIODE_BRIDGE; }
 	virtual std::string				Parser_WriteElementData(eElement* elem) override { return ""; }
 	virtual void					Parser_ReadElementData(eElement* elem, const std::string& data) override { }
+	virtual bool					CanHaveOscilloscope() const override { return false; }
+	virtual void					UIParams(eElement* element) override { }
+	virtual const char*				GetTypeName() const override { return "Diode Bridge"; }
+};
+
+
+class KPTSH : public eDrawableBase
+{
+	RelayContactsGroup m_Groups[3];
+	sf::Vector2f m_groupOffsets[3];
+public:
+	using SimTy = eKPTSH;
+	KPTSH();
+	virtual void					Draw() override;
+	virtual DrawableType			GetType() const override { return DrawableType::DRAWABLE_KPTSH; }
+	virtual std::string				Parser_WriteElementData(eElement* elem) override;
+	virtual void					Parser_ReadElementData(eElement* elem, const std::string& data) override;
+	virtual bool					CanHaveOscilloscope() const override { return false; }
+	virtual void					UIParams(eElement* element) override;
+	virtual const char*				GetTypeName() const override { return "KPTSH"; }
+	virtual void 					SetRotation(float degrees) override { }
+	virtual void					Flip(flipAxis axis) override { }
+	virtual void 					SetPosition(sf::Vector2f pos) override;
+	virtual void					Update(DrawableCircuit& circ, eElement* elem) override;
+};
+
+class ZBF : public eDrawableBase
+{
+public:
+	using SimTy = eZBF;
+	ZBF();
+	virtual void 					Draw() override;
+	virtual DrawableType			GetType() const override { return DrawableType::DRAWABLE_ZBF; }
+	virtual const char*				GetTypeName() const override { return "ZBF"; }
 	virtual bool					CanHaveOscilloscope() const override { return false; }
 	virtual void					UIParams(eElement* element) override { }
 };

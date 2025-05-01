@@ -11,9 +11,8 @@ namespace impl
 		static const char* format(std::format_string<T...> fmt, T&&... args)
 		{
 			thread_local static char tls_buff[buff_sz];
-			std::memset(tls_buff, 0, std::size(tls_buff));
-			std::format_to(tls_buff, fmt, std::forward<T>(args)...);
-			tls_buff[buff_sz - 1] = '\0';
+			auto r = std::format_to_n(tls_buff, buff_sz, fmt, std::forward<T>(args)...);
+			*r.out = '\0';
 			return tls_buff;
 		}
 	};

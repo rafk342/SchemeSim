@@ -87,7 +87,7 @@ public:
 
 	~Console()
 	{
-		system("pause");
+	//	system("pause");
 		fclose(pFile);
 		FreeConsole();
 	}

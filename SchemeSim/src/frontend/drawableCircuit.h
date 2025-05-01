@@ -9,6 +9,7 @@
 #include "drawableComponents.h"
 #include "parser.h"
 #include "drawableCircuit.h"
+#include "core/SFMLRenderer.h"
 
 
 class eDrawableBase;
@@ -26,9 +27,11 @@ class ConnectionDot
 	std::list<std::pair<std::weak_ptr<eDrawableBase>, PinIndex>> m_ConnectedElements;
 	sf::Vector2f m_Position;
 	bool m_ToElemPin = false;
+	bool m_IsVisible = true;
 
 	void			UpdateVisibility();
 	void			UpdateConnectedElementsPositions();
+
 public:
 
 	ConnectionDot(sf::Vector2f pos);
@@ -44,7 +47,7 @@ public:
 	void			CleanupFromExpiredElements();
 	u64				GetNumConnectedElements() const			{ return m_ConnectedElements.size(); }
 	auto&			GetConnectedElements()					{ return m_ConnectedElements; }
-	bool			HasConnectionWithAnyElem() const			{ return m_ToElemPin; }
+	bool			HasConnectionWithAnyElem() const		{ return m_ToElemPin; }
 };
 
 
@@ -84,8 +87,8 @@ private:
 	double								m_curcount = 0.0f;
 
 
-	void DrawThickLine(sf::Vector2f start, sf::Vector2f end, float thickness, sf::Color color);
-	void DrawThickLineWithGradient(sf::Vector2f start, sf::Vector2f end, float thickness, sf::Color color1, sf::Color color2);
+	static void DrawThickLine(sf::Vector2f start, sf::Vector2f end, float thickness, sf::Color color);
+	static void DrawThickLineWithGradient(sf::Vector2f start, sf::Vector2f end, float thickness, sf::Color color1, sf::Color color2);
 
 public:
 
@@ -102,6 +105,7 @@ public:
 	virtual bool 					IsWire() const override { return true; }
 	virtual DrawableType			GetType() const override { return DrawableType::DRAWABLE_UNKNOWN; }
 	virtual bool					CanHaveOscilloscope() const override { return false; }
+	virtual const char*				GetTypeName() const override { return "Wire"; }
 
 	auto&							GetSegments() { return m_Segments; }
 	std::shared_ptr<eDrawableBase>	SplitSelf(DrawableCircuit& circuit, u64 SegmentIndex, sf::Vector2f SplitPoint);
@@ -109,13 +113,13 @@ public:
 	void							DrawCurrentDots(eElement* elem);
 
 	template<PinPoint StartOrEnd> void ConnectToDotAt(std::shared_ptr<ConnectionDot> dot);
-	template<PinPoint StartOrEnd> void DisconnectFromDotAt();
+	template<PinPoint StartOrEnd> void DisconnectFromConnectionAt();
 };
 
 template void Wire::ConnectToDotAt<Wire::Start>(std::shared_ptr<ConnectionDot>);
 template void Wire::ConnectToDotAt<Wire::End>(std::shared_ptr<ConnectionDot>);
-template void Wire::DisconnectFromDotAt<Wire::Start>();
-template void Wire::DisconnectFromDotAt<Wire::End>();
+template void Wire::DisconnectFromConnectionAt<Wire::Start>();
+template void Wire::DisconnectFromConnectionAt<Wire::End>();
 
 
 
@@ -195,7 +199,7 @@ class DrawableCircuit
 
 	Circuit* m_Circuit = nullptr;
 																  
-	std::deque<std::shared_ptr<eDrawableBase>>					  m_DrawableElements;
+	std::vector<std::shared_ptr<eDrawableBase>>					  m_DrawableElements;
 	std::unordered_map<eDrawableBase*, eElement*>				  m_DrawableToElement;
 	std::unordered_map<std::shared_ptr<ConnectionDot>, eNode*>	  m_Connections;
 
@@ -204,35 +208,35 @@ class DrawableCircuit
 
 public:
 
-	void Destroy();
-
-	DrawableCircuit(Circuit& circuit) 
-		: m_Circuit(&circuit) 
-	{ }
+	DrawableCircuit(Circuit& circuit)  : m_Circuit(&circuit)  { m_DrawableElements.reserve(500); }
 	
-	void			Draw(float frameTime);
-	Circuit*		GetCircuit() { return m_Circuit; }
-	void			RemoveElement(eDrawableBase* element);
-	void			RemoveElement(u64 index);
-	void			CleanupConnections();
+	void		Draw(float frameTime);
+	Circuit*	GetCircuit() { return m_Circuit; }
+	void		RemoveElement(eDrawableBase* element);
+	void		RemoveElement(u64 index);
+	void		CleanupConnections();
 	std::shared_ptr<ConnectionDot> CreateConnectionDot(sf::Vector2f pos);
-	void			UpdateWireColors();
+	void		UpdateWireColors();
+	void		Destroy();
 
-	auto AddResistor()		{ return AddElement<Resistor>(5.0); }
-	auto AddBattery()		{ return AddElement<Battery>(5.0); }
-	auto AddWire()			{ return AddElement<Wire>(1e-2); }
-	auto AddCapacitor()		{ return AddElement<Capacitor>(0.00001); }
-	auto AddInductor()		{ return AddElement<Inductor>(0.5); }
-	auto AddDiode()			{ return AddElement<Diode>(); }
-	auto AddButton()		{ return AddElement<RelayContactsGroup>(*m_Circuit); }
-	auto AddTransformer()	{ return AddElement<Transformer>(0.5, 0.3); }
-	auto AddDiodeBridge()	{ return AddElement<DiodeBridge>(*m_Circuit); }
+	auto AddResistor()							{ return AddElement<Resistor>(5.0); }
+	auto AddBattery()							{ return AddElement<Battery>(5.0); }
+	auto AddWire()								{ return AddElement<Wire>(1e-2); }
+	auto AddCapacitor()							{ return AddElement<Capacitor>(0.00001); }
+	auto AddInductor()							{ return AddElement<Inductor>(0.5); }
+	auto AddDiode()								{ return AddElement<Diode>(); }
+	auto AddButton()							{ return AddElement<RelayContactsGroup>(*m_Circuit); }
+	auto AddTransformer()						{ return AddElement<Transformer>(0.5, 1.0); }
+	auto AddDiodeBridge()						{ return AddElement<DiodeBridge>(*m_Circuit); }
+	auto AddTransformerWithMiddlePin()			{ return AddElement<TransformerWithMiddlePin>(*m_Circuit, 0.5, 0.5); }
 	
 	auto AddNeutralRelayCoil()					{ return AddElement<NeutralRelayCoil>(0.2, 0.0); }
 	auto AddNeutralRelayCoil3Class()			{ return AddElement<NeutralRelayCoil3RelyabilityClass>(0.2, 0.0); }
 	auto AddNeutralRelayCoilWithDelay()			{ return AddElement<NeutralRelayCoilWithSwitchOffDelay>(0.2, 0.5); }
 	auto AddNeutralRelayCoilWithDelay3Class()	{ return AddElement<NeutralRelayCoilWithSwitchOffDelay3RelyabilityClass>(0.2, 0.5); }
 	auto AddNeutralRelayCoilWithDiode()			{ return AddElement<NeutralRelayCoilWithRectifier>(*m_Circuit, 0.2, 0.0); }
+	auto AddKPTSH()								{ return AddElement<KPTSH>(*m_Circuit, 5); }
+	auto AddZBF()								{ return AddElement<ZBF>(); }
 
 	template <typename DrawTy>
 	auto AddElement(auto&&... args)
@@ -241,13 +245,18 @@ public:
 		std::shared_ptr<eDrawableBase> drawable = std::make_shared<DrawTy>();
 		m_DrawableToElement[drawable.get()] = elem;
 		m_DrawableElements.push_back(drawable);
+		std::ranges::partition(m_DrawableElements, [](const auto& e) { return !e->IsWire(); });// to avoid cacheline misses
 		SyncWithCircuit();
+		if (!drawable->IsWire())
+			drawable->SetPosition(SFMLRenderer::Get()->GetSfView()->getCenter());
+
 		return drawable;
 	}
 
-	eElement* GetAssociatedElectricElement(eDrawableBase* drawable);
-	eNode* GetElecticNode(std::shared_ptr<ConnectionDot> dot);
-	auto& GetDrawableElements() { return m_DrawableElements; }
+	eElement*	GetAssociatedElectricElement(eDrawableBase* drawable);
+	eNode*		GetElecticNode(std::shared_ptr<ConnectionDot> dot);
+	auto&		GetDrawableElements() { return m_DrawableElements; }
+	std::shared_ptr<eDrawableBase> CreateElement(DrawableType type);
 };
 
 
@@ -261,6 +270,8 @@ class CircuitEditor
 	Wire*				m_EditableWire		= nullptr;
 	bool				m_WireEditOnStart	= false;
 	eDrawableBase*		m_DraggableElement	= nullptr;
+	eDrawableBase*		m_EditableElement	= nullptr;
+	eDrawableBase*		m_HoveredElement	= nullptr;
 	CircuitParser		m_Parser;
 
 	std::list<std::shared_ptr<Oscilloscope>> m_Oscilloscopes;
